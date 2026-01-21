@@ -2,8 +2,6 @@
 // import Storage from '../utils/storage';
 
 // const SOCKET_URL = 'http://192.168.1.3:5000';
-// // const SOCKET_URL = "http://43.205.253.88:5000"
-
 // let socket = null;
 
 // /* ============================
@@ -129,9 +127,8 @@ import { io } from 'socket.io-client';
 import Storage from '../utils/storage';
 
 // 🔧 Use ONE URL at a time
-// const SOCKET_URL = 'http://43.205.253.88:5000';
-const SOCKET_URL = 'http://192.168.1.3:5000';
-// const SOCKET_URL = "https://api.grownoww.com";
+// const SOCKET_URL = 'http://192.168.1.3:5000';
+const SOCKET_URL = "https://api.grownoww.com";
 
 
 let socket = null;
