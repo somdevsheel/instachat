@@ -1,14 +1,35 @@
 const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
+const redis = require('../config/redis');
 
 let io;
 
-// Store online users (userId -> socketId)
-const onlineUsers = new Map();
+/**
+ * ======================================================
+ * SOCKET RATE LIMITER (REDIS)
+ * ======================================================
+ */
+const allowSocketEvent = async (userId, event, limit, windowSeconds) => {
+  try {
+    const key = `socket:${event}:${userId}`;
+    const count = await redis.incr(key);
+
+    if (count === 1) {
+      await redis.expire(key, windowSeconds);
+    }
+
+    return count <= limit;
+  } catch (err) {
+    // Fail-open: never block sockets if Redis fails
+    return true;
+  }
+};
 
 /**
- * Initialize Socket.io Server
+ * ======================================================
+ * INITIALIZE SOCKET.IO SERVER
+ * ======================================================
  */
 const initSocket = (server) => {
   io = socketIo(server, {
@@ -20,7 +41,9 @@ const initSocket = (server) => {
   });
 
   /**
+   * =========================
    * AUTH MIDDLEWARE (JWT)
+   * =========================
    */
   io.use(async (socket, next) => {
     try {
@@ -34,8 +57,8 @@ const initSocket = (server) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
       const user = await User.findById(decoded.id).select('-password');
+
       if (!user) {
         return next(new Error('Authentication error: User not found'));
       }
@@ -48,35 +71,85 @@ const initSocket = (server) => {
   });
 
   /**
+   * =========================
    * CONNECTION
+   * =========================
    */
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     const userId = socket.user._id.toString();
-
     console.log(`⚡ Socket Connected: ${socket.user.username} (${socket.id})`);
-
-    // Track online user
-    onlineUsers.set(userId, socket.id);
 
     // Personal room (notifications, direct emits)
     socket.join(userId);
-
     socket.emit('connected');
 
     /**
-     * JOIN CHAT ROOM
-     * roomId = chatId
+     * =========================
+     * USER ONLINE (REDIS)
+     * =========================
      */
-    socket.on('join_chat', (chatId) => {
+    try {
+      await redis.set(
+        `user:${userId}:online`,
+        socket.id,
+        'EX',
+        30
+      );
+    } catch (err) {
+      // silent
+    }
+
+    socket.presenceInterval = setInterval(async () => {
+      try {
+        await redis.set(
+          `user:${userId}:online`,
+          socket.id,
+          'EX',
+          30
+        );
+      } catch (err) {
+        // silent
+      }
+    }, 15000);
+
+    /**
+     * =========================
+     * JOIN CHAT ROOM
+     * =========================
+     */
+    socket.on('join_chat', async (chatId) => {
       if (!chatId) return;
+
+      const allowed = await allowSocketEvent(
+        userId,
+        'join_chat',
+        10,
+        10
+      );
+
+      if (!allowed) return;
+
       socket.join(chatId);
       console.log(`👥 ${socket.user.username} joined chat ${chatId}`);
     });
 
     /**
+     * =========================
      * TYPING INDICATOR
+     * =========================
      */
-    socket.on('typing', (chatId) => {
+    socket.on('typing', async (chatId) => {
+      if (!chatId) return;
+
+      const allowed = await allowSocketEvent(
+        userId,
+        'typing',
+        5,
+        5
+      );
+
+      if (!allowed) return;
+
       socket.to(chatId).emit('typing', {
         userId,
         username: socket.user.username,
@@ -84,55 +157,84 @@ const initSocket = (server) => {
     });
 
     socket.on('stop_typing', (chatId) => {
+      if (!chatId) return;
       socket.to(chatId).emit('stop_typing', { userId });
     });
 
     /**
- * NEW MESSAGE (PLAIN TEXT ONLY – PHASE 1)
- */
-    socket.on('new_message', (message) => {
+     * =========================
+     * NEW MESSAGE (PLAIN TEXT)
+     * =========================
+     */
+    socket.on('new_message', async (message) => {
       if (
         !message ||
         !message.chat ||
         !message.chat.users ||
         typeof message.text !== 'string'
       ) {
-        console.warn('⚠️ Invalid message payload, ignored');
         return;
       }
 
+      const allowed = await allowSocketEvent(
+        userId,
+        'new_message',
+        20,
+        10
+      );
+
+      if (!allowed) return;
+
       message.chat.users.forEach((chatUser) => {
         const chatUserId = chatUser._id.toString();
-
-        // Skip sender
         if (chatUserId === userId) return;
 
-        // Emit ONLY plain text payload
         io.to(chatUserId).emit('message_received', {
           _id: message._id,
           chat: message.chat._id || message.chat,
           sender: message.sender,
-          text: message.text,        // ✅ plain text only
+          text: message.text,
           createdAt: message.createdAt,
-          encryptionMode: 'plain',   // ✅ explicit
+          encryptionMode: 'plain',
         });
       });
     });
 
-
     /**
+     * =========================
      * DISCONNECT
+     * =========================
      */
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`🔌 Socket Disconnected: ${socket.user.username}`);
-      onlineUsers.delete(userId);
+
+      if (socket.presenceInterval) {
+        clearInterval(socket.presenceInterval);
+      }
+
+      try {
+        await redis.del(`user:${userId}:online`);
+      } catch (err) {
+        // silent
+      }
+
+      try {
+        await User.findByIdAndUpdate(userId, {
+          lastSeen: new Date(),
+        });
+      } catch (err) {
+        // silent
+      }
+
       socket.leave(userId);
     });
   });
 };
 
 /**
- * Get Socket.IO instance
+ * ======================================================
+ * GET SOCKET.IO INSTANCE
+ * ======================================================
  */
 const getIO = () => {
   if (!io) {
@@ -141,15 +243,7 @@ const getIO = () => {
   return io;
 };
 
-/**
- * Get online users (optional helper)
- */
-const isUserOnline = (userId) => {
-  return onlineUsers.has(userId.toString());
-};
-
 module.exports = {
   initSocket,
   getIO,
-  isUserOnline,
 };

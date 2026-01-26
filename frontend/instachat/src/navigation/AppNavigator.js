@@ -26,6 +26,7 @@ import FollowingListScreen from '../screens/profile/FollowingListScreen';
    CONTENT CREATION
 ========================= */
 import CreatePostScreen from '../screens/post/CreatePostScreen';
+import PostDetailScreen from '../screens/post/PostDetailScreen';
 import UploadScreen from '../screens/reels/UploadScreen';
 import CreateStoryScreen from '../screens/feed/CreateStoryScreen';
 
@@ -45,6 +46,11 @@ import NewChatScreen from '../screens/messaging/NewChatScreen';
    COMMENTS
 ========================= */
 import CommentsScreen from '../screens/comments/CommentsScreen';
+
+/* =========================
+   NOTIFICATIONS
+========================= */
+import NotificationScreen from '../screens/NotificationScreen';
 
 const Stack = createStackNavigator();
 
@@ -71,13 +77,16 @@ export default function AppNavigator() {
       >
         {isAuthenticated ? (
           <>
-            {/* MAIN APP */}
             <Stack.Screen
               name={ROUTES.MAIN_TAB}
               component={MainTab}
             />
 
-            {/* MESSAGING */}
+            <Stack.Screen
+              name={ROUTES.NOTIFICATIONS}
+              component={NotificationScreen}
+            />
+
             <Stack.Screen
               name={ROUTES.CHAT_LIST}
               component={ChatListScreen}
@@ -91,10 +100,13 @@ export default function AppNavigator() {
               component={NewChatScreen}
             />
 
-            {/* CREATE CONTENT */}
             <Stack.Screen
               name={ROUTES.CREATE_POST}
               component={CreatePostScreen}
+            />
+            <Stack.Screen
+              name={ROUTES.POST_DETAIL}
+              component={PostDetailScreen}
             />
             <Stack.Screen
               name={ROUTES.UPLOAD_REEL}
@@ -105,21 +117,18 @@ export default function AppNavigator() {
               component={CreateStoryScreen}
             />
 
-            {/* COMMENTS */}
             <Stack.Screen
               name={ROUTES.COMMENTS}
               component={CommentsScreen}
               options={{ headerShown: true }}
             />
 
-            {/* STORY VIEWER */}
             <Stack.Screen
               name="STORY_VIEWER"
               component={StoryViewer}
               options={{ headerShown: false }}
             />
 
-            {/* PROFILE FLOW */}
             <Stack.Screen
               name={ROUTES.USER_PROFILE}
               component={UserProfileScreen}
@@ -149,7 +158,6 @@ export default function AppNavigator() {
               component={ChangePasswordScreen}
             />
 
-            {/* FOLLOW LISTS */}
             <Stack.Screen
               name={ROUTES.FOLLOW_LIST}
               component={FollowListScreen}

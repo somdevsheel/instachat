@@ -1,26 +1,3 @@
-// import api from '../utils/api';
-
-// /**
-//  * GET COMMENTS FOR A POST
-//  * GET /api/v1/feed/posts/:postId/comments
-//  */
-// export const getComments = postId => {
-//   return api.get(`/feed/posts/${postId}/comments`);
-// };
-
-// /**
-//  * ADD COMMENT TO POST
-//  * POST /api/v1/feed/posts/:postId/comments
-//  */
-// export const addComment = (postId, text) => {
-//   return api.post(`/feed/posts/${postId}/comments`, {
-//     text,
-//   });
-// };
-
-
-
-
 import api from '../services/api';
 
 /* ================================

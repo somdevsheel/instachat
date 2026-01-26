@@ -22,8 +22,14 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 
+import AsyncStorage from '@react-native-async-storage/async-storage'; // ✅ ADDED
 import { fetchFeed } from '../../redux/slices/feedSlice';
-import { fetchStories } from '../../redux/slices/storySlice';
+import {
+  fetchStories,
+  setViewedStories, // ✅ ADDED
+} from '../../redux/slices/storySlice';
+import { setUnreadCount } from '../../redux/slices/notificationSlice';
+import { getUnreadCount } from '../../api/Notification.api';
 import FeedPost from '../../components/organisms/FeedPost';
 import StoryList from '../../components/story/StoryList';
 import AddContentSheet from '../../components/bottomsheet/AddContentSheet';
@@ -36,14 +42,41 @@ const HEADER_HEIGHT = 50;
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
-  const insets = useSafeAreaInsets(); // ✅ IMPORTANT
+  const insets = useSafeAreaInsets();
 
   const { posts = [], loading } = useSelector(state => state.feed);
   const currentUserId = useSelector(state => state.auth.user?._id);
+  const unreadCount = useSelector(state => state.notifications.unreadCount);
 
   const [showMenu, setShowMenu] = useState(false);
   const [visiblePostId, setVisiblePostId] = useState(null);
   const [uploadPreviews, setUploadPreviews] = useState([]);
+
+  /* ======================
+     RESTORE VIEWED STORIES (✅ ADDED)
+  ====================== */
+  useEffect(() => {
+    const restoreViewedStories = async () => {
+      const stored = await AsyncStorage.getItem('@instachat_viewed_stories');
+      if (stored) {
+        dispatch(setViewedStories(JSON.parse(stored)));
+      }
+    };
+
+    restoreViewedStories();
+  }, [dispatch]);
+
+  /* ======================
+     FETCH UNREAD COUNT
+  ====================== */
+  const fetchUnreadCount = async () => {
+    try {
+      const res = await getUnreadCount();
+      dispatch(setUnreadCount(res.data.count));
+    } catch (err) {
+      console.error('Error fetching unread count:', err);
+    }
+  };
 
   /* ======================
      INITIAL LOAD
@@ -51,7 +84,16 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     dispatch(fetchFeed());
     dispatch(fetchStories());
+    fetchUnreadCount();
   }, [dispatch]);
+
+  /* ======================
+     REFRESH UNREAD COUNT PERIODICALLY
+  ====================== */
+  useEffect(() => {
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   /* ======================
      REFRESH AFTER UPLOAD
@@ -100,6 +142,7 @@ const HomeScreen = ({ navigation }) => {
   const handleRefresh = useCallback(() => {
     dispatch(fetchFeed());
     dispatch(fetchStories());
+    fetchUnreadCount();
   }, [dispatch]);
 
   const { refreshing, onRefresh } =
@@ -144,25 +187,29 @@ const HomeScreen = ({ navigation }) => {
   ).current;
 
   /* ======================
-     NAVIGATION
-  ====================== */
-  const openMenu = () => setShowMenu(true);
-  const closeMenu = () => setShowMenu(false);
+   NAVIGATION
+====================== */
+const openMenu = () => setShowMenu(true);
+const closeMenu = () => setShowMenu(false);
 
-  const goToCreatePost = () => {
-    closeMenu();
-    navigation.navigate(ROUTES.CREATE_POST);
-  };
+const goToCreatePost = () => {
+  closeMenu();
+  navigation.navigate(ROUTES.CREATE_POST);
+};
 
-  const goToCreateReel = () => {
-    closeMenu();
-    navigation.navigate(ROUTES.UPLOAD_REEL);
-  };
+const goToCreateReel = () => {
+  closeMenu();
+  navigation.navigate(ROUTES.UPLOAD_REEL);
+};
 
-  const goToCreateStory = () => {
-    closeMenu();
-    navigation.navigate(ROUTES.CREATE_STORY);
-  };
+const goToCreateStory = () => {
+  closeMenu();
+  navigation.navigate(ROUTES.CREATE_STORY);
+};
+
+const goToNotifications = () => {
+  navigation.getParent().navigate(ROUTES.NOTIFICATIONS);
+};
 
   /* ======================
      RENDERERS
@@ -200,16 +247,15 @@ const HomeScreen = ({ navigation }) => {
     <SafeAreaView
       style={[
         styles.container,
-        { paddingBottom: insets.bottom }, // ✅ KEY FIX
+        { paddingBottom: insets.bottom },
       ]}
-      edges={['top', 'bottom']} // ✅ IMPORTANT
+      edges={['top', 'bottom']}
     >
       <StatusBar
         barStyle="light-content"
         backgroundColor="#000"
       />
 
-      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={openMenu}>
           <Ionicons name="add-outline" size={28} color="#fff" />
@@ -217,16 +263,25 @@ const HomeScreen = ({ navigation }) => {
 
         <Text style={styles.logo}>Instachat</Text>
 
-        <TouchableOpacity>
+        <TouchableOpacity
+          style={styles.notificationIcon}
+          onPress={goToNotifications}
+        >
           <Ionicons
             name="heart-outline"
             size={26}
             color="#fff"
           />
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
-      {/* FEED */}
       {showLoader ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#fff" />
@@ -252,12 +307,11 @@ const HomeScreen = ({ navigation }) => {
           initialNumToRender={2}
           windowSize={3}
           contentContainerStyle={{
-            paddingBottom: insets.bottom + 20, // ✅ EXTRA SAFETY
+            paddingBottom: insets.bottom + 20,
           }}
         />
       )}
 
-      {/* ADD CONTENT */}
       <AddContentSheet
         visible={showMenu}
         onClose={closeMenu}
@@ -293,6 +347,29 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     fontStyle: 'italic',
+  },
+
+  notificationIcon: {
+    position: 'relative',
+  },
+
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -8,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 
   storyContainer: {

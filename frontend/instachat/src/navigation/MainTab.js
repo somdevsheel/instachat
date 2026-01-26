@@ -29,28 +29,22 @@ const getTabIcon = (routeName, focused) => {
 };
 
 const MainTab = () => {
-  const insets = useSafeAreaInsets(); // 🔥 KEY FIX
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false,
-
-        // 🔥 THE REAL FIX IS HERE
         tabBarStyle: {
           backgroundColor: '#000',
           borderTopColor: '#222',
-
-          // base height + safe area
           height: 56 + insets.bottom,
           paddingBottom: insets.bottom,
         },
-
         tabBarItemStyle: {
           paddingTop: 6,
         },
-
         tabBarIcon: ({ focused }) => (
           <Ionicons
             name={getTabIcon(route.name, focused)}
@@ -58,8 +52,7 @@ const MainTab = () => {
             color={focused ? '#fff' : '#888'}
           />
         ),
-
-        tabBarHideOnKeyboard: true, // ✅ important
+        tabBarHideOnKeyboard: true,
       })}
     >
       <Tab.Screen name="HOME" component={HomeScreen} />

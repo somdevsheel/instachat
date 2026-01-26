@@ -6,6 +6,7 @@ const upload = require('../../middlewares/upload.middleware');
 const {
   createStory,
   getStoryFeed,
+  markStoriesSeen,
 } = require('../../controllers/story.controller');
 
 // CREATE STORY
@@ -22,5 +23,7 @@ router.get(
   protect,
   getStoryFeed
 );
+
+router.post('/seen', protect, markStoriesSeen);
 
 module.exports = router;

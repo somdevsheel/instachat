@@ -4,12 +4,10 @@ export const ROUTES = {
   ========================= */
   LOGIN: 'AUTH_LOGIN',
   SIGNUP: 'AUTH_SIGNUP',
-
   /* =========================
      ROOT / NAV CONTAINERS
   ========================= */
   MAIN_TAB: 'MAIN_TAB',
-
   /* =========================
      TABS
   ========================= */
@@ -18,36 +16,35 @@ export const ROUTES = {
   REELS: 'REELS',
   MESSAGES: 'MESSAGES',
   PROFILE: 'PROFILE',
-
   /* =========================
      FEED / POSTS
   ========================= */
   CREATE_POST: 'CREATE_POST',
+  POST_DETAIL: 'POST_DETAIL', // ✅ Add this
   COMMENTS: 'COMMENTS',
-
   /* =========================
      STORIES / REELS
   ========================= */
   CREATE_STORY: 'CREATE_STORY',
   UPLOAD_REEL: 'UPLOAD_REEL',
-
   /* =========================
      CHAT
   ========================= */
   CHAT_LIST: 'CHAT_LIST',
   CHAT_DETAIL: 'CHAT_DETAIL',
   NEW_CHAT: 'NEW_CHAT',
-
+  /* =========================
+     NOTIFICATIONS
+  ========================= */
+  NOTIFICATIONS: 'NOTIFICATIONS',
   /* =========================
      PROFILE
   ========================= */
   USER_PROFILE: 'USER_PROFILE',
   EDIT_PROFILE: 'EDIT_PROFILE',
-
   FOLLOW_LIST: 'FOLLOW_LIST',
   FOLLOWERS_LIST: 'FOLLOWERS_LIST',
   FOLLOWING_LIST: 'FOLLOWING_LIST',
-
   /* =========================
      SETTINGS
   ========================= */

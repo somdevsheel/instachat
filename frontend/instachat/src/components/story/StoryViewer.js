@@ -4,13 +4,18 @@ import {
   StyleSheet,
   Dimensions,
   TouchableWithoutFeedback,
+  TouchableOpacity,
   Animated,
   Image,
   ActivityIndicator,
+  Text,
+  StatusBar,
+  Alert,
 } from 'react-native';
-import { Video } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { markStoriesSeen } from '../../api/Story.api';
 
 const { width, height } = Dimensions.get('window');
 const IMAGE_DURATION = 5000;
@@ -25,16 +30,36 @@ const StoryViewer = () => {
     initialIndex = 0,
   } = route.params || {};
 
-  const userStories = stories.filter(
-    s => s?.user?._id === userId
-  );
-
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [paused, setPaused] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const progress = useRef(new Animated.Value(0)).current;
-  const videoRef = useRef(null);
 
-  const currentStory = userStories[currentIndex];
+  // ✅ Track viewed stories (ADDED)
+  const viewedStoryIds = useRef(new Set());
+
+  const currentStory = stories[currentIndex];
+  const mediaUrl = currentStory?.media?.url;
+  const mediaType = currentStory?.media?.type;
+
+  // ✅ Collect viewed story IDs (ADDED)
+  useEffect(() => {
+    if (currentStory?._id) {
+      viewedStoryIds.current.add(currentStory._id);
+    }
+  }, [currentStory]);
+
+  // Create video player
+  const player = useVideoPlayer(
+    mediaType === 'video' ? mediaUrl : null,
+    player => {
+      if (mediaType === 'video') {
+        player.loop = false;
+        player.play();
+      }
+    }
+  );
 
   /* =========================
      PROGRESS HANDLING
@@ -49,12 +74,12 @@ const StoryViewer = () => {
         duration,
         useNativeDriver: false,
       }).start(({ finished }) => {
-        if (finished) {
+        if (finished && !paused) {
           goNext();
         }
       });
     },
-    [progress]
+    [progress, paused]
   );
 
   /* =========================
@@ -62,22 +87,81 @@ const StoryViewer = () => {
   ========================= */
   useEffect(() => {
     if (!currentStory) return;
+    setImageLoaded(false);
+  }, [currentIndex, currentStory]);
 
-    if (currentStory.mediaType === 'image') {
+  /* =========================
+     VIDEO PLAYER LISTENER
+  ========================= */
+  useEffect(() => {
+    if (!player || mediaType !== 'video') return;
+
+    const subscription = player.addListener(
+      'statusChange',
+      (status, oldStatus, error) => {
+        if (error) {
+          Alert.alert(
+            'Video Error',
+            'Failed to play this video',
+            [
+              { text: 'Skip', onPress: () => goNext() },
+              { text: 'Close', onPress: closeViewer },
+            ]
+          );
+          return;
+        }
+
+        if (status === 'readyToPlay') {
+          const duration = player.duration * 1000;
+          if (duration > 0) {
+            startProgress(duration);
+          }
+        }
+
+        if (status === 'idle' && player.currentTime > 0) {
+          goNext();
+        }
+      }
+    );
+
+    return () => subscription.remove();
+  }, [player, mediaType, startProgress]);
+
+  /* =========================
+     IMAGE LOADED
+  ========================= */
+  useEffect(() => {
+    if (imageLoaded && mediaType === 'image') {
       startProgress(IMAGE_DURATION);
     }
-  }, [currentIndex, currentStory, startProgress]);
+  }, [imageLoaded, mediaType, startProgress]);
+
+  /* =========================
+     MARK STORIES SEEN + CLOSE
+  ========================= */
+  const closeViewer = useCallback(async () => {
+    try {
+      const ids = Array.from(viewedStoryIds.current);
+      if (ids.length > 0) {
+        await markStoriesSeen(ids);
+      }
+    } catch (err) {
+      console.warn('❌ Failed to mark stories seen');
+    } finally {
+      navigation.goBack();
+    }
+  }, [navigation]);
 
   /* =========================
      NAVIGATION
   ========================= */
   const goNext = useCallback(() => {
-    if (currentIndex < userStories.length - 1) {
+    if (currentIndex < stories.length - 1) {
       setCurrentIndex(i => i + 1);
     } else {
-      navigation.goBack();
+      closeViewer(); // ✅ important
     }
-  }, [currentIndex, userStories.length, navigation]);
+  }, [currentIndex, stories.length, closeViewer]);
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) {
@@ -86,13 +170,26 @@ const StoryViewer = () => {
   }, [currentIndex]);
 
   /* =========================
-     VIDEO EVENTS
+     PAUSE / RESUME
   ========================= */
-  const handleVideoLoad = status => {
-    if (!status?.durationMillis) return;
-    startProgress(status.durationMillis);
+  const handleLongPress = () => {
+    setPaused(true);
+    progress.stopAnimation();
+    if (player && mediaType === 'video') {
+      player.pause();
+    }
   };
 
+  const handlePressOut = () => {
+    setPaused(false);
+    if (player && mediaType === 'video') {
+      player.play();
+    }
+  };
+
+  /* =========================
+     LOADING STATES
+  ========================= */
   if (!currentStory) {
     return (
       <View style={styles.loader}>
@@ -101,16 +198,26 @@ const StoryViewer = () => {
     );
   }
 
+  if (!mediaUrl) {
+    return (
+      <View style={styles.loader}>
+        <Text style={styles.errorText}>Story media not found</Text>
+        <TouchableOpacity onPress={closeViewer}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+
       {/* PROGRESS BAR */}
       <View style={styles.progressRow}>
-        {userStories.map((_, index) => (
+        {stories.map((_, index) => (
           <View key={index} style={styles.progressTrack}>
-            {index < currentIndex && (
-              <View style={styles.progressFill} />
-            )}
-
+            {index < currentIndex && <View style={styles.progressFill} />}
             {index === currentIndex && (
               <Animated.View
                 style={[
@@ -129,48 +236,48 @@ const StoryViewer = () => {
       </View>
 
       {/* MEDIA */}
-      {currentStory.mediaType === 'image' ? (
+      {mediaType === 'image' ? (
         <Image
-          source={{ uri: currentStory.mediaUrl }}
+          source={{ uri: mediaUrl }}
           style={styles.media}
-          resizeMode="cover"
+          resizeMode="contain"
+          onLoad={() => setImageLoaded(true)}
         />
       ) : (
-        <Video
-          ref={videoRef}
-          source={{ uri: currentStory.mediaUrl }}
+        <VideoView
+          player={player}
           style={styles.media}
-          resizeMode="cover"
-          shouldPlay
-          isLooping={false}
-          onLoad={handleVideoLoad}
-          onPlaybackStatusUpdate={status => {
-            if (status?.didJustFinish) {
-              goNext();
-            }
-          }}
+          contentFit="contain"
+          nativeControls={false}
         />
       )}
 
       {/* TAP AREAS */}
       <View style={styles.touchLayer}>
-        <TouchableWithoutFeedback onPress={goPrev}>
+        <TouchableWithoutFeedback
+          onPress={goPrev}
+          onLongPress={handleLongPress}
+          onPressOut={handlePressOut}
+        >
           <View style={styles.leftZone} />
         </TouchableWithoutFeedback>
 
-        <TouchableWithoutFeedback onPress={goNext}>
+        <TouchableWithoutFeedback
+          onPress={goNext}
+          onLongPress={handleLongPress}
+          onPressOut={handlePressOut}
+        >
           <View style={styles.rightZone} />
         </TouchableWithoutFeedback>
       </View>
 
       {/* CLOSE */}
-      <Ionicons
-        name="close"
-        size={30}
-        color="white"
-        style={styles.close}
-        onPress={() => navigation.goBack()}
-      />
+      <TouchableOpacity
+        style={styles.closeIcon}
+        onPress={closeViewer}
+      >
+        <Ionicons name="close" size={30} color="white" />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -181,66 +288,46 @@ export default StoryViewer;
    STYLES
 ========================= */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-
-  media: {
-    width,
-    height,
-  },
-
+  container: { flex: 1, backgroundColor: 'black' },
+  media: { width, height },
   progressRow: {
     position: 'absolute',
-    top: 40,
+    top: 50,
     left: 10,
     right: 10,
     flexDirection: 'row',
     zIndex: 10,
   },
-
   progressTrack: {
     flex: 1,
-    height: 2,
+    height: 3,
     backgroundColor: 'rgba(255,255,255,0.3)',
     marginHorizontal: 2,
-    overflow: 'hidden',
   },
-
   progressFill: {
     height: '100%',
     backgroundColor: 'white',
   },
-
   touchLayer: {
     position: 'absolute',
     width,
     height,
     flexDirection: 'row',
   },
-
-  leftZone: {
-    width: width / 2,
-    height,
-  },
-
-  rightZone: {
-    width: width / 2,
-    height,
-  },
-
-  close: {
+  leftZone: { width: width / 2, height },
+  rightZone: { width: width / 2, height },
+  closeIcon: {
     position: 'absolute',
-    top: 40,
+    top: 50,
     right: 20,
     zIndex: 20,
   },
-
   loader: {
     flex: 1,
     backgroundColor: 'black',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  errorText: { color: 'white' },
+  closeButtonText: { color: 'white' },
 });

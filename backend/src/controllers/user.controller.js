@@ -1,4 +1,7 @@
 const User = require('../models/user.model');
+const Post = require('../models/Post');
+const notificationService = require('../services/notification.service');
+const { getUserStatus } = require('../utils/userStatus.util');
 
 /**
  * CDN BASE URL
@@ -8,7 +11,7 @@ const CDN_BASE_URL =
   `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
 
 /* ================================
-   🔍 SEARCH USERS (FIXED)
+   🔍 SEARCH USERS
 ================================ */
 exports.searchUsers = async (req, res) => {
   try {
@@ -18,7 +21,6 @@ exports.searchUsers = async (req, res) => {
       return res.status(200).json({ success: true, data: [] });
     }
 
-    // Get current user to check following status
     const currentUser = await User.findById(req.user.id).select('following');
     const followingSet = new Set(
       currentUser.following.map(id => id.toString())
@@ -27,17 +29,26 @@ exports.searchUsers = async (req, res) => {
     const users = await User.find({
       username: { $regex: q, $options: 'i' },
       _id: { $ne: req.user.id },
-    }).select('username profilePicture');
+    }).select('username profilePicture lastSeen');
 
-    // ✅ Add isFollowing to each user
-    const usersWithFollowStatus = users.map(user => ({
-      _id: user._id,
-      username: user.username,
-      profilePicture: user.profilePicture,
-      isFollowing: followingSet.has(user._id.toString()), // ✅ THIS WAS MISSING!
-    }));
+    const usersWithStatus = await Promise.all(
+      users.map(async (user) => {
+        const status = await getUserStatus(user);
+        return {
+          _id: user._id,
+          username: user.username,
+          profilePicture: user.profilePicture,
+          isFollowing: followingSet.has(user._id.toString()),
+          online: status.online,
+          lastSeen: status.lastSeen,
+        };
+      })
+    );
 
-    return res.status(200).json({ success: true, data: usersWithFollowStatus });
+    return res.status(200).json({
+      success: true,
+      data: usersWithStatus,
+    });
   } catch (err) {
     console.error('Search users error:', err);
     return res.status(500).json({
@@ -66,31 +77,47 @@ exports.getUserProfile = async (req, res) => {
       });
     }
 
-    // ✅ Check if current user is following this profile
-    const currentUser = await User.findById(req.user.id).select('following followers');
+    const posts = await Post.find({ user: user._id })
+      .sort({ createdAt: -1 })
+      .select('media user createdAt')
+      .lean();
+
+    const currentUser = await User.findById(req.user.id).select(
+      'following followers'
+    );
+
     const isFollowing = currentUser.following.some(
       id => id.toString() === user._id.toString()
     );
 
-    // ✅ Check if profile user follows current user back (for canMessage)
     const theyFollowMe = user.following.some(
       f => f._id.toString() === req.user.id.toString()
     );
 
-    // ✅ canMessage = I follow them OR they follow me (mutual connection)
     const canMessage = isFollowing || theyFollowMe;
+
+    const status = await getUserStatus(user);
 
     return res.status(200).json({
       success: true,
       data: {
         _id: user._id,
         username: user.username,
+        name: user.name || '',
         profilePicture: user.profilePicture,
         bio: user.bio,
+
+        postsCount: posts.length,
         followersCount: user.followers.length,
         followingCount: user.following.length,
+
         isFollowing,
-        canMessage, // ✅ Now included!
+        canMessage,
+
+        online: status.online,
+        lastSeen: status.lastSeen,
+
+        posts,
       },
     });
   } catch (err) {
@@ -127,12 +154,7 @@ exports.updateUserProfile = async (req, res) => {
     }
 
     if (avatarKey) {
-      const CDN_BASE_URL =
-        process.env.CDN_BASE_URL ||
-        `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
-
       const newUrl = `${CDN_BASE_URL}/${avatarKey}`;
-
       if (user.profilePicture !== newUrl) {
         user.profilePicture = newUrl;
       }
@@ -184,6 +206,17 @@ exports.followUser = async (req, res) => {
     } else {
       me.following.push(other._id);
       other.followers.push(me._id);
+
+      try {
+        await notificationService.createNotification({
+          recipient: other._id,
+          sender: me._id,
+          type: 'follow',
+          message: 'started following you',
+        });
+      } catch (err) {
+        console.error('Notification error:', err);
+      }
     }
 
     await me.save();
@@ -192,7 +225,7 @@ exports.followUser = async (req, res) => {
     return res.status(200).json({
       success: true,
       following: !isFollowing,
-      followersCount: other.followers.length, // ✅ Include updated count
+      followersCount: other.followers.length,
     });
   } catch (err) {
     console.error('Follow user error:', err);
@@ -218,7 +251,7 @@ exports.getFollowList = async (req, res) => {
     }
 
     const user = await User.findById(id)
-      .populate(type, 'username profilePicture')
+      .populate(type, 'username profilePicture lastSeen')
       .select(type);
 
     if (!user) {
@@ -228,18 +261,24 @@ exports.getFollowList = async (req, res) => {
       });
     }
 
-    // ✅ Add isFollowing status to each user in the list
     const currentUser = await User.findById(req.user.id).select('following');
     const followingSet = new Set(
       currentUser.following.map(id => id.toString())
     );
 
-    const listWithStatus = user[type].map(u => ({
-      _id: u._id,
-      username: u.username,
-      profilePicture: u.profilePicture,
-      isFollowing: followingSet.has(u._id.toString()),
-    }));
+    const listWithStatus = await Promise.all(
+      user[type].map(async (u) => {
+        const status = await getUserStatus(u);
+        return {
+          _id: u._id,
+          username: u.username,
+          profilePicture: u.profilePicture,
+          isFollowing: followingSet.has(u._id.toString()),
+          online: status.online,
+          lastSeen: status.lastSeen,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
@@ -264,16 +303,22 @@ exports.getSuggestedUsers = async (req, res) => {
     const users = await User.find({
       _id: { $nin: [req.user.id, ...me.following] },
     })
-      .select('username profilePicture')
+      .select('username profilePicture lastSeen')
       .limit(20);
 
-    // All suggested users are NOT followed (by definition)
-    const usersWithStatus = users.map(u => ({
-      _id: u._id,
-      username: u.username,
-      profilePicture: u.profilePicture,
-      isFollowing: false,
-    }));
+    const usersWithStatus = await Promise.all(
+      users.map(async (u) => {
+        const status = await getUserStatus(u);
+        return {
+          _id: u._id,
+          username: u.username,
+          profilePicture: u.profilePicture,
+          isFollowing: false,
+          online: status.online,
+          lastSeen: status.lastSeen,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
@@ -294,21 +339,28 @@ exports.getSuggestedUsers = async (req, res) => {
 exports.getMutualFollowers = async (req, res) => {
   try {
     const me = await User.findById(req.user.id)
-      .populate('followers', '_id username profilePicture')
+      .populate('followers', 'username profilePicture lastSeen')
       .populate('following', '_id');
 
     const followingSet = new Set(
       me.following.map(u => u._id.toString())
     );
 
-    const mutuals = me.followers
-      .filter(f => followingSet.has(f._id.toString()))
-      .map(f => ({
-        _id: f._id,
-        username: f.username,
-        profilePicture: f.profilePicture,
-        isFollowing: true, // Mutuals are always following each other
-      }));
+    const mutuals = await Promise.all(
+      me.followers
+        .filter(f => followingSet.has(f._id.toString()))
+        .map(async (f) => {
+          const status = await getUserStatus(f);
+          return {
+            _id: f._id,
+            username: f.username,
+            profilePicture: f.profilePicture,
+            isFollowing: true,
+            online: status.online,
+            lastSeen: status.lastSeen,
+          };
+        })
+    );
 
     return res.status(200).json({
       success: true,

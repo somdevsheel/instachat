@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 
 import { searchUsers, followUser } from '../../api/User.api';
@@ -18,6 +18,7 @@ import { ROUTES } from '../../navigation/routes.constants';
 import usePullToRefresh from '../../hooks/usePullToRefresh';
 
 const SearchScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const authUserId = useSelector(state => state.auth.user?._id);
 
   const [query, setQuery] = useState('');
@@ -143,7 +144,13 @@ const SearchScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView 
+      style={[
+        styles.container,
+        { paddingBottom: insets.bottom },
+      ]}
+      edges={['top', 'bottom']}
+    >
       <View style={styles.inner}>
         <TextInput
           placeholder="Search"
@@ -176,6 +183,9 @@ const SearchScreen = ({ navigation }) => {
               colors={['#0095F6']}
             />
           }
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + 20,
+          }}
           ListEmptyComponent={
             !loading && query.trim() ? (
               <Text style={styles.emptyText}>

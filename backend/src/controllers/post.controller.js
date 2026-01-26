@@ -1,4 +1,5 @@
 const postService = require('../services/post.service');
+const notificationService = require('../services/notification.service');
 const catchAsync = require('../utils/catchAsync');
 
 /**
@@ -121,6 +122,24 @@ exports.likePost = catchAsync(async (req, res) => {
 
   const result = await postService.toggleLike(postId, userId);
 
+  // 🔔 CREATE NOTIFICATION (only when liking, not unliking)
+  if (result.liked) {
+    try {
+      const post = await postService.getPostById(postId);
+      
+      await notificationService.createNotification({
+        recipient: post.user._id,
+        sender: userId,
+        type: 'like',
+        post: postId,
+        message: 'liked your post',
+      });
+    } catch (notifErr) {
+      console.error('Failed to create like notification:', notifErr);
+      // Don't fail the like action if notification fails
+    }
+  }
+
   // 🔔 Real-time update (optional, safe)
   const io = req.app.get('io');
   if (io) {
@@ -188,6 +207,20 @@ exports.addComment = catchAsync(async (req, res) => {
       success: false,
       message: 'Post not found',
     });
+  }
+
+  // 🔔 CREATE NOTIFICATION
+  try {
+    await notificationService.createNotification({
+      recipient: post.user._id,
+      sender: userId,
+      type: 'comment',
+      post: postId,
+      message: 'commented on your post',
+    });
+  } catch (notifErr) {
+    console.error('Failed to create comment notification:', notifErr);
+    // Don't fail the comment action if notification fails
   }
 
   res.status(201).json({

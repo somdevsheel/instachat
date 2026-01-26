@@ -14,10 +14,13 @@ const {
   errorHandler,
 } = require('./middlewares/error.middleware');
 
+// Redis
+const redis = require('./config/redis');
+
 const app = express();
 
 /* ============================
-   HEALTH CHECK
+   BASIC HEALTH CHECK
 ============================ */
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
@@ -26,6 +29,34 @@ app.get('/api/v1/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+/* ============================
+   REDIS HEALTH & MEMORY CHECK
+   (LOW RAM SAFE)
+============================ */
+app.get('/api/v1/health/redis', async (req, res) => {
+  try {
+    const info = await redis.info('memory');
+
+    const usedMemory =
+      info.match(/used_memory_human:(.+)/)?.[1] || 'unknown';
+    const maxMemory =
+      info.match(/maxmemory_human:(.+)/)?.[1] || 'unlimited';
+
+    res.status(200).json({
+      success: true,
+      redis: 'ok',
+      usedMemory,
+      maxMemory,
+    });
+  } catch (err) {
+    // Redis down should NOT crash app
+    res.status(200).json({
+      success: false,
+      redis: 'down',
+    });
+  }
 });
 
 /* ============================
@@ -49,7 +80,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 /* ============================
-   RATE LIMITING
+   GLOBAL RATE LIMITING (REST)
 ============================ */
 app.use('/api', apiLimiter);
 

@@ -5,6 +5,7 @@ const catchAsync = require('../utils/catchAsync');
  * Get user notifications
  */
 exports.getNotifications = catchAsync(async (req, res) => {
+  console.log('📢 getNotifications called'); // ✅ Debug log
   const userId = req.user.id;
   const { page = 1, limit = 20 } = req.query;
 
@@ -18,6 +19,22 @@ exports.getNotifications = catchAsync(async (req, res) => {
     success: true,
     results: notifications.length,
     data: notifications,
+  });
+});
+
+/**
+ * Get unread count
+ */
+exports.getUnreadCount = catchAsync(async (req, res) => {
+  console.log('📢 getUnreadCount called for user:', req.user.id); // ✅ Debug log
+  const userId = req.user.id;
+  const count = await notificationService.getUnreadCount(userId);
+
+  console.log('📢 Unread count:', count); // ✅ Debug log
+
+  res.status(200).json({
+    success: true,
+    data: { count },
   });
 });
 

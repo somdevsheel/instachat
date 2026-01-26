@@ -1,13 +1,16 @@
 const { Server } = require('socket.io');
+const User = require('./models/user.model');
+const redis = require('./config/redis');
 
 /**
  * ======================================================
  * SOCKET SERVICE
  * ======================================================
- * - User presence
+ * - User presence (Redis)
  * - Messaging
  * - Notifications
  * - Feed realtime updates
+ * - Socket rate limiting (Redis)
  */
 
 const socketService = (server, app) => {
@@ -24,22 +27,50 @@ const socketService = (server, app) => {
   }
 
   /**
-   * Track online users
-   * Map<userId, socketId>
+   * =========================
+   * SOCKET RATE LIMITER
+   * =========================
    */
-  const onlineUsers = new Map();
+  const allowSocketEvent = async (userId, event, limit, windowSeconds) => {
+    try {
+      const key = `socket:${event}:${userId}`;
+      const count = await redis.incr(key);
 
-  io.on('connection', socket => {
+      if (count === 1) {
+        await redis.expire(key, windowSeconds);
+      }
+
+      return count <= limit;
+    } catch (err) {
+      // Fail-open: never block socket if Redis fails
+      return true;
+    }
+  };
+
+  io.on('connection', (socket) => {
     console.log('⚡ Socket connected:', socket.id);
 
-    /* =========================
-       USER PRESENCE
-    ========================= */
-    socket.on('join', userId => {
+    /**
+     * =========================
+     * USER PRESENCE (REDIS)
+     * =========================
+     */
+    socket.on('join', async (userId) => {
       if (!userId) return;
 
+      socket.userId = userId;
       socket.join(userId);
-      onlineUsers.set(userId, socket.id);
+
+      try {
+        await redis.set(
+          `user:${userId}:online`,
+          socket.id,
+          'EX',
+          30 // TTL seconds
+        );
+      } catch (err) {
+        // silent fail
+      }
 
       io.emit('userStatus', {
         userId,
@@ -47,13 +78,38 @@ const socketService = (server, app) => {
       });
 
       console.log(`👤 User online: ${userId}`);
+
+      // Heartbeat to refresh TTL
+      socket.presenceInterval = setInterval(async () => {
+        try {
+          await redis.set(
+            `user:${userId}:online`,
+            socket.id,
+            'EX',
+            30
+          );
+        } catch (err) {
+          // silent
+        }
+      }, 15000);
     });
 
-    /* =========================
-       PRIVATE MESSAGING
-    ========================= */
-    socket.on('sendMessage', data => {
-      if (!data?.recipientId) return;
+    /**
+     * =========================
+     * PRIVATE MESSAGING
+     * =========================
+     */
+    socket.on('sendMessage', async (data) => {
+      if (!data?.recipientId || !socket.userId) return;
+
+      const allowed = await allowSocketEvent(
+        socket.userId,
+        'sendMessage',
+        20,
+        10
+      );
+
+      if (!allowed) return;
 
       io.to(data.recipientId).emit('newMessage', data);
 
@@ -64,49 +120,68 @@ const socketService = (server, app) => {
       });
     });
 
-    /* =========================
-       ⚠️ LEGACY CLIENT LIKE EVENT
-       (NO LOGIC – BACKWARD SAFE)
-    ========================= */
-    socket.on('like_post', () => {
-      // Do nothing intentionally
-      // Likes are emitted ONLY by backend controllers
-    });
+    /**
+     * =========================
+     * SOCIAL NOTIFICATIONS
+     * =========================
+     */
+    socket.on('sendNotification', async (data) => {
+      if (!data?.recipientId || !socket.userId) return;
 
-    /* =========================
-       SOCIAL NOTIFICATIONS
-    ========================= */
-    socket.on('sendNotification', data => {
-      if (!data?.recipientId) return;
+      const allowed = await allowSocketEvent(
+        socket.userId,
+        'sendNotification',
+        10,
+        10
+      );
+
+      if (!allowed) return;
+
       io.to(data.recipientId).emit('notification', data);
     });
 
-    /* =========================
-       DISCONNECT
-    ========================= */
-    socket.on('disconnect', () => {
-      for (const [userId, socketId] of onlineUsers.entries()) {
-        if (socketId === socket.id) {
-          onlineUsers.delete(userId);
+    /**
+     * =========================
+     * DISCONNECT
+     * =========================
+     */
+    socket.on('disconnect', async () => {
+      if (socket.presenceInterval) {
+        clearInterval(socket.presenceInterval);
+      }
 
-          io.emit('userStatus', {
-            userId,
-            status: 'offline',
-          });
-
-          console.log(`👤 User offline: ${userId}`);
-          break;
+      if (socket.userId) {
+        try {
+          await redis.del(`user:${socket.userId}:online`);
+        } catch (err) {
+          // silent
         }
+
+        try {
+          await User.findByIdAndUpdate(socket.userId, {
+            lastSeen: new Date(),
+          });
+        } catch (err) {
+          // silent
+        }
+
+        io.emit('userStatus', {
+          userId: socket.userId,
+          status: 'offline',
+        });
+
+        console.log(`👤 User offline: ${socket.userId}`);
       }
 
       console.log('❌ Socket disconnected:', socket.id);
     });
   });
 
-  /* =========================
-     SERVER-SIDE EMITTERS
-     (USED BY CONTROLLERS)
-  ========================= */
+  /**
+   * =========================
+   * SERVER-SIDE EMITTERS
+   * =========================
+   */
 
   const emitPostLike = ({ postId, userId, liked, likesCount }) => {
     if (!postId) return;
@@ -117,14 +192,9 @@ const socketService = (server, app) => {
       liked,
       likesCount,
     });
-
-    console.log('📡 post_like_updated:', {
-      postId,
-      likesCount,
-    });
   };
 
-  const emitNewPost = post => {
+  const emitNewPost = (post) => {
     if (!post) return;
     io.emit('new_post', post);
   };

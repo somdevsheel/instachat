@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { FlatList } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-
 import { fetchStories } from '../../redux/slices/storySlice';
 import StoryItem from './StoryItem';
 
@@ -9,14 +8,13 @@ import StoryItem from './StoryItem';
  * StoryList
  * - fetches stories
  * - groups by user
- * - ensures "Your story" is always first
+ * - "Your story" always first
+ * - Instagram-style ring logic
  */
 const StoryList = ({ navigation }) => {
   const dispatch = useDispatch();
 
-  const { list = [], loading } = useSelector(
-    state => state.stories
-  );
+  const { list = [], loading } = useSelector(state => state.stories);
   const { user } = useSelector(state => state.auth);
 
   /* =========================
@@ -34,47 +32,34 @@ const StoryList = ({ navigation }) => {
       return [];
     }
 
-    const groupedByUser = new Map();
+    console.log('📊 Story list:', list);
 
-    for (const story of list) {
-      if (!story?.user?._id) continue;
-
-      const userId = story.user._id;
-
-      if (!groupedByUser.has(userId)) {
-        groupedByUser.set(userId, {
-          user: story.user,
-          stories: [],
-        });
-      }
-
-      groupedByUser
-        .get(userId)
-        .stories.push(story);
-    }
-
-    const groups = Array.from(
-      groupedByUser.values()
+    const myStoryGroup = list.find(
+      group => group.user._id === user._id
     );
 
-    const myGroup = groups.find(
-      g => g.user._id === user._id
+    const otherGroups = list.filter(
+      group => group.user._id !== user._id
     );
 
-    const otherGroups = groups.filter(
-      g => g.user._id !== user._id
-    );
+    // 🔑 Only for OTHER users
+    const hasUnseenStories = stories =>
+      stories.some(story => story.isSeen === false);
 
     return [
       {
         isMe: true,
-        hasStory: Boolean(myGroup),
-        stories: myGroup?.stories || [],
+        // ✅ YOUR STORY → ring always shown if exists
+        hasStory: Boolean(myStoryGroup?.stories?.length),
+        stories: myStoryGroup?.stories || [],
         user,
       },
       ...otherGroups.map(group => ({
         isMe: false,
-        hasStory: true,
+        // ✅ OTHER USERS → ring only if unseen
+        hasStory:
+          group.stories.length > 0 &&
+          hasUnseenStories(group.stories),
         stories: group.stories,
         user: group.user,
       })),
@@ -86,12 +71,14 @@ const StoryList = ({ navigation }) => {
   ========================= */
   const handlePress = useCallback(
     item => {
-      if (item.isMe && !item.hasStory) {
+      console.log('👆 Story pressed:', item);
+
+      if (item.isMe && item.stories.length === 0) {
         navigation.navigate('CREATE_STORY');
         return;
       }
 
-      if (item.hasStory && item.stories.length > 0) {
+      if (item.stories.length > 0) {
         navigation.navigate('STORY_VIEWER', {
           stories: item.stories,
           initialIndex: 0,

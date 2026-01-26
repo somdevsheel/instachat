@@ -15,35 +15,42 @@ const StorySchema = new mongoose.Schema(
         enum: ['image', 'video'],
         required: true,
       },
-
       key: {
         type: String,
         required: true,
       },
-
       url: {
         type: String,
         required: true,
       },
     },
 
+    // ✅ NEW: Track who viewed this story
+    seenBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        index: true,
+      },
+    ],
+
     expiresAt: {
       type: Date,
       required: true,
-      index: { expires: 0 }, // TTL index
+      index: { expires: 0 },
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Auto-delete after 24 hours
-StorySchema.pre('save', function (next) {
+StorySchema.pre('validate', function (next) {
   if (!this.expiresAt) {
     this.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   }
   next();
 });
+
+StorySchema.index({ user: 1, createdAt: -1 });
+StorySchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('Story', StorySchema);

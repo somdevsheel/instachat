@@ -68,6 +68,9 @@ const ProfileScreen = ({ navigation }) => {
     );
   }
 
+  /* =========================
+     RENDER GRID ITEM
+  ========================= */
   const renderGridItem = ({ item, index }) => (
     <TouchableOpacity
       style={[
@@ -75,6 +78,7 @@ const ProfileScreen = ({ navigation }) => {
         index % 3 !== 2 && styles.gridItemMargin,
       ]}
       activeOpacity={0.9}
+      onPress={() => navigation.navigate(ROUTES.POST_DETAIL, { postId: item._id })}
     >
       <Image
         source={{ uri: item.media?.variants?.original }}
@@ -158,7 +162,7 @@ const ProfileScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.statItem}
               onPress={() =>
-                navigation.navigate(ROUTES.FOLLOWERS_LIST, {
+                navigation.navigate('FOLLOWERS_LIST', {
                   userId: user._id,
                 })
               }
@@ -172,7 +176,7 @@ const ProfileScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.statItem}
               onPress={() =>
-                navigation.navigate(ROUTES.FOLLOWING_LIST, {
+                navigation.navigate('FOLLOWING_LIST', {
                   userId: user._id,
                 })
               }

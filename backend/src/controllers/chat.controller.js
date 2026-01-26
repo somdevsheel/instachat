@@ -3,6 +3,7 @@ const Chat = require('../models/chat.model');
 const Message = require('../models/message.model');
 const User = require('../models/user.model');
 const { getIO } = require('../services/socket.service');
+const { getUserStatus } = require('../utils/userStatus.util');
 
 /**
  * ======================================================
@@ -32,7 +33,7 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
     isGroup: false,
     participants: { $size: 2, $all: [currentUserId, userId] },
   })
-    .populate('participants', 'username profilePicture')
+    .populate('participants', 'username profilePicture lastSeen')
     .populate({
       path: 'lastMessage',
       populate: { path: 'sender receiver', select: 'username profilePicture' },
@@ -46,16 +47,30 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
     });
 
     chat = await Chat.findById(chat._id)
-      .populate('participants', 'username profilePicture')
+      .populate('participants', 'username profilePicture lastSeen')
       .populate({
         path: 'lastMessage',
         populate: { path: 'sender receiver', select: 'username profilePicture' },
       });
   }
 
+  // ✅ Attach online / lastSeen status
+  const participantsWithStatus = await Promise.all(
+    chat.participants.map(async (user) => {
+      const status = await getUserStatus(user);
+      return {
+        ...user.toObject(),
+        ...status,
+      };
+    })
+  );
+
   res.status(200).json({
     success: true,
-    data: chat,
+    data: {
+      ...chat.toObject(),
+      participants: participantsWithStatus,
+    },
   });
 });
 
@@ -68,7 +83,6 @@ exports.sendMessage = catchAsync(async (req, res) => {
   const { chatId, receiverId, text } = req.body;
   const senderId = req.user.id;
 
-  // ✅ Plain text validation
   if (!chatId || !receiverId || typeof text !== 'string') {
     return res.status(400).json({
       success: false,
@@ -78,7 +92,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
 
   const chat = await Chat.findById(chatId).populate(
     'participants',
-    '_id username profilePicture'
+    '_id username profilePicture lastSeen'
   );
 
   if (!chat) {
@@ -89,7 +103,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
   }
 
   const receiver = chat.participants.find(
-    u => u._id.toString() === receiverId
+    (u) => u._id.toString() === receiverId
   );
 
   if (!receiver) {
@@ -99,7 +113,6 @@ exports.sendMessage = catchAsync(async (req, res) => {
     });
   }
 
-  // ✅ Create plain-text message
   let message = await Message.create({
     chat: chatId,
     sender: senderId,
@@ -118,7 +131,6 @@ exports.sendMessage = catchAsync(async (req, res) => {
   chat.lastMessage = message._id;
   await chat.save();
 
-  // 🔔 Emit via socket
   const io = getIO();
   io.to(receiverId.toString()).emit('message_received', {
     _id: message._id,
@@ -156,12 +168,12 @@ exports.markMessagesRead = catchAsync(async (req, res) => {
   }
 
   await Message.updateMany(
-    { _id: { $in: messages.map(m => m._id) } },
+    { _id: { $in: messages.map((m) => m._id) } },
     { $push: { readBy: { user: readerId } } }
   );
 
   const io = getIO();
-  messages.forEach(msg => {
+  messages.forEach((msg) => {
     io.to(msg.sender.toString()).emit('messages_read', {
       chatId,
       readerId,
@@ -262,7 +274,7 @@ exports.getRecentChats = catchAsync(async (req, res) => {
   const chats = await Chat.find({
     participants: userId,
   })
-    .populate('participants', 'username profilePicture')
+    .populate('participants', 'username profilePicture lastSeen')
     .populate({
       path: 'lastMessage',
       match: {
@@ -276,8 +288,27 @@ exports.getRecentChats = catchAsync(async (req, res) => {
     })
     .sort({ updatedAt: -1 });
 
+  const chatsWithStatus = await Promise.all(
+    chats.map(async (chat) => {
+      const participantsWithStatus = await Promise.all(
+        chat.participants.map(async (user) => {
+          const status = await getUserStatus(user);
+          return {
+            ...user.toObject(),
+            ...status,
+          };
+        })
+      );
+
+      return {
+        ...chat.toObject(),
+        participants: participantsWithStatus,
+      };
+    })
+  );
+
   res.status(200).json({
     success: true,
-    data: chats,
+    data: chatsWithStatus,
   });
 });
