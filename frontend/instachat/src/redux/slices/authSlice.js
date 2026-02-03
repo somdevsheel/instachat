@@ -9,18 +9,19 @@ import { cacheProfileImage } from '../../utils/profileImageCache';
    ASYNC THUNKS
 ========================= */
 
-// REGISTER
+/* =========================
+   REGISTER (OTP FLOW)
+   ❌ DO NOT AUTO-LOGIN
+========================= */
 export const registerUser = createAsyncThunk(
   'auth/register',
   async (data, { rejectWithValue }) => {
     try {
       const res = await register(data);
 
-      await Storage.setToken(res.token);
-      await Storage.setUser(res.user);
-
-      // ✅ Socket only (no crypto)
-      initSocket();
+      // ❌ Do NOT store token/user here
+      // ❌ Do NOT init socket
+      // OTP flow requires manual login
 
       return res;
     } catch (err) {
@@ -31,29 +32,42 @@ export const registerUser = createAsyncThunk(
   }
 );
 
-// LOGIN
+/* =========================
+   LOGIN (FIXED)
+========================= */
 export const loginUser = createAsyncThunk(
   'auth/login',
   async ({ email, password }, { rejectWithValue }) => {
     try {
+      // 🔥 CRITICAL FIX:
+      // Clear any stale session before login
+      await Storage.clearSession();
+
       const res = await login(email, password);
+
+      // Defensive check
+      if (!res?.token || !res?.user) {
+        throw new Error('Invalid login response');
+      }
 
       await Storage.setToken(res.token);
       await Storage.setUser(res.user);
 
-      // ✅ Socket only (no crypto)
+      // ✅ Socket only after successful login
       initSocket();
 
       return res;
     } catch (err) {
       return rejectWithValue(
-        err?.response?.data?.message || 'Login failed'
+        err?.response?.data?.message || 'Invalid email or password'
       );
     }
   }
 );
 
-// LOAD CURRENT USER (AUTO LOGIN)
+/* =========================
+   LOAD CURRENT USER
+========================= */
 export const loadUser = createAsyncThunk(
   'auth/loadUser',
   async (_, { rejectWithValue }) => {
@@ -146,6 +160,7 @@ const authSlice = createSlice({
 
   extraReducers: (builder) => {
     builder
+      /* LOGIN */
       .addCase(loginUser.pending, (state) => {
         state.loading = true;
       })
@@ -156,20 +171,23 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.rejected, (state) => {
         state.loading = false;
+        state.isAuthenticated = false;
       })
 
+      /* REGISTER (OTP) */
       .addCase(registerUser.pending, (state) => {
         state.loading = true;
       })
-      .addCase(registerUser.fulfilled, (state, action) => {
-        state.user = action.payload.user;
-        state.isAuthenticated = true;
+      .addCase(registerUser.fulfilled, (state) => {
+        // ❌ User is NOT logged in after OTP signup
         state.loading = false;
+        state.isAuthenticated = false;
       })
       .addCase(registerUser.rejected, (state) => {
         state.loading = false;
       })
 
+      /* LOAD USER */
       .addCase(loadUser.fulfilled, (state, action) => {
         state.user = action.payload;
         state.isAuthenticated = true;
@@ -181,6 +199,7 @@ const authSlice = createSlice({
         state.loading = false;
       })
 
+      /* UPDATE PROFILE */
       .addCase(updateProfile.pending, (state) => {
         state.loading = true;
       })
@@ -197,5 +216,10 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, incrementUnread, clearUnread } = authSlice.actions;
+export const {
+  logout,
+  incrementUnread,
+  clearUnread,
+} = authSlice.actions;
+
 export default authSlice.reducer;

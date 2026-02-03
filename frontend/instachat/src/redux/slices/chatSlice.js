@@ -57,27 +57,20 @@ export const fetchMessages = createAsyncThunk(
 );
 
 /**
- * Send PLAIN TEXT message (PHASE 1)
+ * Send message
  */
 export const sendMessage = createAsyncThunk(
   'chat/sendMessage',
   async ({ chatId, receiverId, text }, { rejectWithValue }) => {
     try {
-      console.log('📤 Sending plain message:', { chatId, receiverId });
-
       const response = await api.post('/chats/message', {
         chatId,
         receiverId,
         text,
         encryptionMode: 'plain',
       });
-
       return response.data.data;
     } catch (error) {
-      console.error(
-        '❌ Send message error:',
-        error.response?.data || error.message
-      );
       return rejectWithValue(
         error.response?.data?.message || 'Failed to send message'
       );
@@ -102,6 +95,23 @@ export const deleteMessage = createAsyncThunk(
   }
 );
 
+/**
+ * ✅ Fetch unread message count
+ */
+export const fetchUnreadCount = createAsyncThunk(
+  'chat/fetchUnreadCount',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/chats/unread-count');
+      return response.data.data.count;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || 'Failed to fetch unread count'
+      );
+    }
+  }
+);
+
 /* =========================
    SLICE
 ========================= */
@@ -115,6 +125,7 @@ const chatSlice = createSlice({
     loading: false,
     chatsLoading: false,
     error: null,
+    unreadCount: 0, // ✅ NEW
   },
 
   reducers: {
@@ -175,6 +186,22 @@ const chatSlice = createSlice({
       });
     },
 
+    // ✅ NEW: Update unread count
+    setUnreadCount: (state, action) => {
+      state.unreadCount = action.payload;
+    },
+
+    // ✅ NEW: Increment unread count
+    incrementUnreadCount: (state) => {
+      state.unreadCount += 1;
+    },
+
+    // ✅ NEW: Decrement unread count
+    decrementUnreadCount: (state, action) => {
+      const count = action.payload || 1;
+      state.unreadCount = Math.max(0, state.unreadCount - count);
+    },
+
     clearMessages: state => {
       state.messages = [];
       state.activeChat = null;
@@ -184,6 +211,7 @@ const chatSlice = createSlice({
       state.chats = [];
       state.messages = [];
       state.activeChat = null;
+      state.unreadCount = 0;
     },
   },
 
@@ -261,6 +289,14 @@ const chatSlice = createSlice({
       })
       .addCase(sendMessage.rejected, (state, action) => {
         state.error = action.payload;
+      })
+
+      // ✅ Fetch Unread Count
+      .addCase(fetchUnreadCount.fulfilled, (state, action) => {
+        state.unreadCount = action.payload;
+      })
+      .addCase(fetchUnreadCount.rejected, (state) => {
+        state.unreadCount = 0;
       });
   },
 });
@@ -270,6 +306,9 @@ export const {
   addMessage,
   messageDeleted,
   markChatRead,
+  setUnreadCount,
+  incrementUnreadCount,
+  decrementUnreadCount,
   clearMessages,
   clearChats,
 } = chatSlice.actions;

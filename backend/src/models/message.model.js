@@ -21,16 +21,16 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
 
-    // ✅ PHASE 1 – plain text
     text: {
       type: String,
       trim: true,
     },
 
-    // 🔐 PHASE 2 – encrypted
-    encryptedPayloads: {
-      type: Array,
-      default: undefined,
+    // ✅ STORY REPLY SUPPORT
+    story: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Story',
+      default: null,
     },
 
     encryptionMode: {

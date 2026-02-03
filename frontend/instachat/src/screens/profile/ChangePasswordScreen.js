@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   View,
@@ -11,9 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../services/api';
+import { useDispatch } from 'react-redux';
+
+import { updatePassword } from '../../api/Auth.api';
+import { logout } from '../../redux/slices/authSlice';
 
 const ChangePasswordScreen = ({ navigation }) => {
+  const dispatch = useDispatch();
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,25 +27,52 @@ const ChangePasswordScreen = ({ navigation }) => {
       return Alert.alert('Error', 'All fields are required');
     }
 
-    if (newPassword.length < 6) {
-      return Alert.alert('Error', 'Password must be at least 6 characters');
+    if (newPassword.length < 8) {
+      return Alert.alert(
+        'Error',
+        'Password must be at least 8 characters'
+      );
     }
 
     try {
       setLoading(true);
 
-      await api.put('/auth/change-password', {
-        currentPassword,
-        newPassword,
-      });
+      await updatePassword(currentPassword, newPassword);
 
-      Alert.alert('Success', 'Password updated successfully');
-      navigation.goBack();
-    } catch (error) {
       Alert.alert(
-        'Failed',
-        error.response?.data?.message || 'Something went wrong'
+        'Password Updated',
+        'Your password was changed successfully. Please login again.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // ✅ SINGLE SOURCE OF TRUTH
+              dispatch(logout());
+            },
+          },
+        ]
       );
+    } catch (error) {
+      const status = error.response?.status;
+      const message =
+        error.response?.data?.message || 'Something went wrong';
+
+      if (status === 401) {
+        Alert.alert(
+          'Session Expired',
+          'Please login again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => dispatch(logout()),
+            },
+          ]
+        );
+      } else if (status === 429) {
+        Alert.alert('Too Many Attempts', message);
+      } else {
+        Alert.alert('Failed', message);
+      }
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,10 @@ const PLACEHOLDER =
 
 /**
  * StoryItem
- * - shows user avatar
- * - ring if story exists
- * - plus badge for "Your story"
+ * - Instagram-style rings
+ * - unseen → pink ring
+ * - seen → grey ring
+ * - your story → plus badge if empty
  */
 const StoryItem = ({ item, onPress }) => {
   if (!item) return null;
@@ -26,10 +27,21 @@ const StoryItem = ({ item, onPress }) => {
     user = {},
     isMe = false,
     hasStory = false,
+    stories = [],
   } = item;
 
   const avatarUri =
     user.profilePicture || PLACEHOLDER;
+
+  /* =========================
+     SEEN LOGIC (CRITICAL)
+  ========================= */
+  const isSeen = useMemo(() => {
+    if (!hasStory || isMe) return false;
+    return stories.every(
+      story => story.isSeen === true
+    );
+  }, [hasStory, isMe, stories]);
 
   return (
     <TouchableOpacity
@@ -41,7 +53,8 @@ const StoryItem = ({ item, onPress }) => {
       <View
         style={[
           styles.avatarWrapper,
-          hasStory && styles.hasStory,
+          hasStory && !isSeen && styles.unseenRing,
+          hasStory && isSeen && styles.seenRing,
         ]}
       >
         <Image
@@ -49,7 +62,7 @@ const StoryItem = ({ item, onPress }) => {
           style={styles.avatar}
         />
 
-        {/* PLUS BADGE */}
+        {/* PLUS BADGE (Your story only) */}
         {isMe && !hasStory && (
           <View style={styles.plusBadge}>
             <Ionicons
@@ -94,9 +107,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#222',
   },
 
-  hasStory: {
+  unseenRing: {
     borderWidth: 2,
-    borderColor: '#d62976',
+    borderColor: '#d62976', // Instagram pink
+  },
+
+  seenRing: {
+    borderWidth: 2,
+    borderColor: '#555', // muted grey
   },
 
   avatar: {
@@ -127,3 +145,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

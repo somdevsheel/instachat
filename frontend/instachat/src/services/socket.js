@@ -1,7 +1,13 @@
 import * as SocketIO from 'socket.io-client';
 import Storage from '../utils/storage';
 import store from '../redux/store';
-import { addNotification } from '../redux/slices/notificationSlice';
+import {
+  addNotification
+} from '../redux/slices/notificationSlice';
+import {
+  setUnreadCount,
+  incrementUnreadCount,
+} from '../redux/slices/chatSlice';
 import Toast from 'react-native-toast-message';
 
 const SOCKET_URL = "https://api.grownoww.com";
@@ -51,10 +57,11 @@ export const initSocket = async () => {
 
   socket.on('message_received', (message) => {
     console.log('📩 Message received:', message);
+    // The unread count will be updated via unread_count_updated event
   });
 
   socket.on('typing', (username) => {
-    console.log(`✍️ ${username} is typing...`);
+    console.log(`✏️ ${username} is typing...`);
   });
 
   socket.on('stop_typing', () => {
@@ -77,6 +84,12 @@ export const initSocket = async () => {
         Toast.hide();
       },
     });
+  });
+
+  // ✅ NEW: Listen for unread count updates
+  socket.on('unread_count_updated', (data) => {
+    console.log('📬 Unread count updated:', data.count);
+    store.dispatch(setUnreadCount(data.count));
   });
 
   return socket;

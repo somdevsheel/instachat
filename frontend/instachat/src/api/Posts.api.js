@@ -50,7 +50,7 @@ export const likePost = async (postId) => {
     if (!postId) {
       throw new Error('Post ID is required');
     }
-    const res = await api.put(`/feed/posts/${postId}/like`); // ✅ Fixed
+    const res = await api.put(`/feed/posts/${postId}/like`);
     if (!res?.data?.success) {
       throw new Error('Like request failed');
     }
@@ -98,7 +98,7 @@ export const getPostById = async (postId) => {
     if (!postId) {
       throw new Error('Post ID is required');
     }
-    const res = await api.get(`/feed/posts/${postId}`); // ✅ Fixed
+    const res = await api.get(`/feed/posts/${postId}`);
     if (!res?.data?.success) {
       throw new Error('Failed to fetch post');
     }
@@ -108,6 +108,29 @@ export const getPostById = async (postId) => {
       '❌ getPostById error:',
       err?.response?.data || err.message
     );
+    throw err;
+  }
+};
+
+/* ======================================================
+   DELETE POST
+====================================================== */
+export const deletePost = async (postId) => {
+  try {
+    if (!postId) {
+      throw new Error('Post ID is required');
+    }
+    const res = await api.delete(`/feed/posts/${postId}`);
+    if (!res?.data?.success) {
+      throw new Error('Failed to delete post');
+    }
+    return res.data;
+  } catch (err) {
+    console.error(
+      '❌ deletePost error:',
+      err?.response?.data || err.message
+    );
+    Alert.alert('Error', 'Failed to delete post');
     throw err;
   }
 };

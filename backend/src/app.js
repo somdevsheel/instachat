@@ -67,7 +67,8 @@ app.use(helmet());
 app.use(
   cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    // methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
@@ -120,5 +121,8 @@ app.use(errorConverter);
 
 // Final error response
 app.use(errorHandler);
+
+app.use('/api/debug', require('./routes/debug.routes'));
+
 
 module.exports = app;

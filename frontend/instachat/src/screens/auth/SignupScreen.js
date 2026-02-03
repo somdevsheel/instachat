@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,130 +7,117 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { useDispatch } from 'react-redux';
-import { registerUser } from '../../redux/slices/authSlice';
-import { ROUTES } from '../../navigation/routes.constants';
-import colors from '../../theme/colors';
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from "react-native";
+import { useDispatch } from "react-redux";
+import { ROUTES } from "../../navigation/routes.constants";
+import colors from "../../theme/colors";
+import { requestRegisterOtp } from "../../api/Auth.api";
+
 
 const SignupScreen = ({ navigation }) => {
   const dispatch = useDispatch();
 
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSignup = async () => {
-    if (
-      !name.trim() ||
-      !username.trim() ||
-      !email.trim() ||
-      !password
-    ) {
-      Alert.alert('Missing details', 'Please fill in all fields');
-      return;
-    }
+  const handleSendOtp = async () => {
+  if (!fullName || !username || !email) {
+    Alert.alert("Missing details", "Please fill all fields");
+    return;
+  }
 
+  try {
     setSubmitting(true);
 
-    const result = await dispatch(
-      registerUser({
-        name: name.trim(),
-        username: username.trim().toLowerCase(),
-        email: email.trim().toLowerCase(),
-        password,
-      })
-    );
+    // await requestRegisterOtp({
+    //   email: email.trim().toLowerCase(),
+    // });
+    await requestRegisterOtp(email.trim().toLowerCase());
 
-    setSubmitting(false);
 
-    if (!registerUser.fulfilled.match(result)) {
-      Alert.alert(
-        'Registration failed',
-        result.payload || 'Unable to create account'
-      );
-      return;
-    }
-
+    navigation.navigate(ROUTES.SIGNUP_OTP, {
+      email: email.trim().toLowerCase(),
+      fullName: fullName.trim(),
+      username: username.trim().toLowerCase(),
+    });
+  } catch (error) {
     Alert.alert(
-      'Account created',
-      'Your account has been created successfully'
+      "Error",
+      error?.response?.data?.message || "Failed to send OTP"
     );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
-    // Optional: go back to login
-    navigation.navigate(ROUTES.LOGIN);
-  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create account</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Full name"
-        placeholderTextColor="#999"
-        value={name}
-        onChangeText={setName}
-        autoCapitalize="words"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        placeholderTextColor="#999"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#999"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#999"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-
-      <TouchableOpacity
-        style={[
-          styles.button,
-          submitting && styles.buttonDisabled,
-        ]}
-        onPress={handleSignup}
-        disabled={submitting}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        {submitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Sign up</Text>
-        )}
-      </TouchableOpacity>
+        <Text style={styles.title}>Create account</Text>
 
-      <TouchableOpacity
-        onPress={() => navigation.navigate(ROUTES.LOGIN)}
-        style={styles.loginLink}
-      >
-        <Text style={styles.loginText}>
-          Already have an account?{' '}
-          <Text style={styles.loginHighlight}>Log in</Text>
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Full name"
+          value={fullName}
+          onChangeText={setFullName}
+          autoCapitalize="words"
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Username"
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.button,
+            submitting && styles.buttonDisabled,
+          ]}
+          onPress={handleSendOtp}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Send OTP</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate(ROUTES.LOGIN)}
+          style={styles.loginLink}
+        >
+          <Text style={styles.loginText}>
+            Already have an account?{" "}
+            <Text style={styles.loginHighlight}>Log in</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -139,39 +126,39 @@ export default SignupScreen;
 /* =========================
    STYLES
 ========================= */
+
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 16,
+    backgroundColor: "#fff",
   },
 
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 36,
-    color: '#000',
+    fontWeight: "bold",
+    marginBottom: 32,
+    textAlign: "center",
+    color: "#000",
   },
 
   input: {
-    width: '100%',
+    width: "100%",
     padding: 14,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: "#FAFAFA",
     borderWidth: 1,
-    borderColor: '#DBDBDB',
+    borderColor: "#DBDBDB",
     borderRadius: 6,
     marginBottom: 14,
     fontSize: 16,
   },
 
   button: {
-    width: '100%',
     backgroundColor: colors.primary,
     padding: 14,
     borderRadius: 6,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 10,
   },
 
@@ -180,13 +167,14 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
     fontSize: 16,
   },
 
   loginLink: {
     marginTop: 24,
+    alignItems: "center",
   },
 
   loginText: {
@@ -196,6 +184,6 @@ const styles = StyleSheet.create({
 
   loginHighlight: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

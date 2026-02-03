@@ -36,7 +36,14 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
     .populate('participants', 'username profilePicture lastSeen')
     .populate({
       path: 'lastMessage',
-      populate: { path: 'sender receiver', select: 'username profilePicture' },
+      populate: [
+        { path: 'sender receiver', select: 'username profilePicture' },
+        {
+          path: 'story',
+          select: 'media user createdAt',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
+      ],
     });
 
   if (!chat) {
@@ -50,18 +57,21 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
       .populate('participants', 'username profilePicture lastSeen')
       .populate({
         path: 'lastMessage',
-        populate: { path: 'sender receiver', select: 'username profilePicture' },
+        populate: [
+          { path: 'sender receiver', select: 'username profilePicture' },
+          {
+            path: 'story',
+            select: 'media user createdAt',
+            populate: { path: 'user', select: 'username profilePicture' },
+          },
+        ],
       });
   }
 
-  // ✅ Attach online / lastSeen status
   const participantsWithStatus = await Promise.all(
     chat.participants.map(async (user) => {
       const status = await getUserStatus(user);
-      return {
-        ...user.toObject(),
-        ...status,
-      };
+      return { ...user.toObject(), ...status };
     })
   );
 
@@ -76,17 +86,17 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
 
 /**
  * ======================================================
- * SEND MESSAGE (PLAIN TEXT ONLY)
+ * SEND MESSAGE (NORMAL + STORY REPLY)
  * ======================================================
  */
 exports.sendMessage = catchAsync(async (req, res) => {
-  const { chatId, receiverId, text } = req.body;
+  const { chatId, receiverId, text, storyId } = req.body;
   const senderId = req.user.id;
 
   if (!chatId || !receiverId || typeof text !== 'string') {
     return res.status(400).json({
       success: false,
-      message: 'Missing message text',
+      message: 'chatId, receiverId and text are required',
     });
   }
 
@@ -96,10 +106,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
   );
 
   if (!chat) {
-    return res.status(404).json({
-      success: false,
-      message: 'Chat not found',
-    });
+    return res.status(404).json({ success: false, message: 'Chat not found' });
   }
 
   const receiver = chat.participants.find(
@@ -118,28 +125,45 @@ exports.sendMessage = catchAsync(async (req, res) => {
     sender: senderId,
     receiver: receiverId,
     text,
+    story: storyId || null,
     encryptionMode: 'plain',
     type: 'text',
     readBy: [{ user: senderId }],
   });
 
-  message = await message.populate(
-    'sender receiver',
-    'username profilePicture'
-  );
+  message = await message.populate([
+    { path: 'sender receiver', select: 'username profilePicture' },
+    {
+      path: 'story',
+      select: 'media user createdAt',
+      populate: { path: 'user', select: 'username profilePicture' },
+    },
+  ]);
 
   chat.lastMessage = message._id;
   await chat.save();
 
   const io = getIO();
+  
+  // Emit message to receiver
   io.to(receiverId.toString()).emit('message_received', {
     _id: message._id,
     chat: chatId,
     sender: message.sender,
     receiver: message.receiver,
     text: message.text,
-    encryptionMode: 'plain',
+    story: message.story,
     createdAt: message.createdAt,
+  });
+
+  // ✅ EMIT UNREAD COUNT UPDATE TO RECEIVER
+  const unreadCount = await Message.countDocuments({
+    receiver: receiverId,
+    'readBy.user': { $ne: receiverId },
+  });
+
+  io.to(receiverId.toString()).emit('unread_count_updated', {
+    count: unreadCount,
   });
 
   return res.status(201).json({
@@ -180,7 +204,36 @@ exports.markMessagesRead = catchAsync(async (req, res) => {
     });
   });
 
-  return res.status(200).json({ success: true });
+  // ✅ EMIT UPDATED UNREAD COUNT TO READER
+  const unreadCount = await Message.countDocuments({
+    receiver: readerId,
+    'readBy.user': { $ne: readerId },
+  });
+
+  io.to(readerId.toString()).emit('unread_count_updated', {
+    count: unreadCount,
+  });
+
+  res.status(200).json({ success: true });
+});
+
+/**
+ * ======================================================
+ * GET UNREAD MESSAGE COUNT
+ * ======================================================
+ */
+exports.getUnreadCount = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+
+  const count = await Message.countDocuments({
+    receiver: userId,
+    'readBy.user': { $ne: userId },
+  });
+
+  res.status(200).json({
+    success: true,
+    data: { count },
+  });
 });
 
 /**
@@ -194,20 +247,13 @@ exports.deleteMessage = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
   const message = await Message.findById(messageId);
-
   if (!message) {
-    return res.status(404).json({
-      success: false,
-      message: 'Message not found',
-    });
+    return res.status(404).json({ success: false, message: 'Message not found' });
   }
 
   if (mode === 'everyone') {
     if (message.sender.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not allowed',
-      });
+      return res.status(403).json({ success: false, message: 'Not allowed' });
     }
 
     message.deletedForEveryone = true;
@@ -216,7 +262,7 @@ exports.deleteMessage = catchAsync(async (req, res) => {
 
     const io = getIO();
     io.to(message.receiver.toString()).emit('message_deleted', {
-      messageId: message._id,
+      messageId,
       chatId: message.chat,
       mode: 'everyone',
     });
@@ -229,14 +275,10 @@ exports.deleteMessage = catchAsync(async (req, res) => {
       message.deletedFor.push(userId);
       await message.save();
     }
-
     return res.status(200).json({ success: true });
   }
 
-  return res.status(400).json({
-    success: false,
-    message: 'Invalid delete mode',
-  });
+  res.status(400).json({ success: false, message: 'Invalid delete mode' });
 });
 
 /**
@@ -254,6 +296,11 @@ exports.getChatHistory = catchAsync(async (req, res) => {
     deletedFor: { $ne: userId },
   })
     .populate('sender receiver', 'username profilePicture')
+    .populate({
+      path: 'story',
+      select: 'media user createdAt',
+      populate: { path: 'user', select: 'username profilePicture' },
+    })
     .sort({ createdAt: 1 });
 
   res.status(200).json({
@@ -271,20 +318,18 @@ exports.getChatHistory = catchAsync(async (req, res) => {
 exports.getRecentChats = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
-  const chats = await Chat.find({
-    participants: userId,
-  })
+  const chats = await Chat.find({ participants: userId })
     .populate('participants', 'username profilePicture lastSeen')
     .populate({
       path: 'lastMessage',
-      match: {
-        deletedForEveryone: false,
-        deletedFor: { $ne: userId },
-      },
-      populate: {
-        path: 'sender receiver',
-        select: 'username profilePicture',
-      },
+      populate: [
+        { path: 'sender receiver', select: 'username profilePicture' },
+        {
+          path: 'story',
+          select: 'media user createdAt',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
+      ],
     })
     .sort({ updatedAt: -1 });
 
@@ -293,17 +338,11 @@ exports.getRecentChats = catchAsync(async (req, res) => {
       const participantsWithStatus = await Promise.all(
         chat.participants.map(async (user) => {
           const status = await getUserStatus(user);
-          return {
-            ...user.toObject(),
-            ...status,
-          };
+          return { ...user.toObject(), ...status };
         })
       );
 
-      return {
-        ...chat.toObject(),
-        participants: participantsWithStatus,
-      };
+      return { ...chat.toObject(), participants: participantsWithStatus };
     })
   );
 

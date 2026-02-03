@@ -1,90 +1,80 @@
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { FlatList } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchStories } from '../../redux/slices/storySlice';
+import { useSelector } from 'react-redux';
 import StoryItem from './StoryItem';
 
 /**
  * StoryList
- * - fetches stories
- * - groups by user
- * - "Your story" always first
- * - Instagram-style ring logic
+ * - Instagram-style story list
+ * - Your story (+) opens Create Story
+ * - Story tap opens Story Viewer
  */
 const StoryList = ({ navigation }) => {
-  const dispatch = useDispatch();
-
-  const { list = [], loading } = useSelector(state => state.stories);
+  const { list = [], loading } = useSelector(
+    state => state.stories
+  );
   const { user } = useSelector(state => state.auth);
-
-  /* =========================
-     FETCH STORIES
-  ========================= */
-  useEffect(() => {
-    dispatch(fetchStories());
-  }, [dispatch]);
 
   /* =========================
      NORMALIZE DATA
   ========================= */
   const data = useMemo(() => {
-    if (!user?._id || !Array.isArray(list)) {
-      return [];
-    }
+    if (!user?._id || !Array.isArray(list)) return [];
 
-    console.log('📊 Story list:', list);
-
-    const myStoryGroup = list.find(
-      group => group.user._id === user._id
+    const safeGroups = list.filter(
+      g => g?.user?._id && Array.isArray(g.stories)
     );
 
-    const otherGroups = list.filter(
-      group => group.user._id !== user._id
+    const myGroup = safeGroups.find(
+      g => g.user._id === user._id
     );
 
-    // 🔑 Only for OTHER users
-    const hasUnseenStories = stories =>
-      stories.some(story => story.isSeen === false);
+    const otherGroups = safeGroups.filter(
+      g => g.user._id !== user._id
+    );
 
     return [
       {
         isMe: true,
-        // ✅ YOUR STORY → ring always shown if exists
-        hasStory: Boolean(myStoryGroup?.stories?.length),
-        stories: myStoryGroup?.stories || [],
         user,
+        stories: myGroup?.stories || [],
       },
       ...otherGroups.map(group => ({
         isMe: false,
-        // ✅ OTHER USERS → ring only if unseen
-        hasStory:
-          group.stories.length > 0 &&
-          hasUnseenStories(group.stories),
-        stories: group.stories,
         user: group.user,
+        stories: group.stories,
       })),
     ];
   }, [list, user]);
 
   /* =========================
-     HANDLER
+     PRESS HANDLER (FIXED)
   ========================= */
   const handlePress = useCallback(
     item => {
-      console.log('👆 Story pressed:', item);
-
+      // ✅ YOUR STORY + NO STORIES → CREATE STORY
       if (item.isMe && item.stories.length === 0) {
         navigation.navigate('CREATE_STORY');
         return;
       }
 
-      if (item.stories.length > 0) {
-        navigation.navigate('STORY_VIEWER', {
-          stories: item.stories,
-          initialIndex: 0,
-          userId: item.user._id,
-        });
-      }
+      // ❌ SAFETY: no stories at all
+      if (!item.stories.length) return;
+
+      // ✅ FLATTEN STORIES (PRESERVE _id)
+      const flattenedStories = item.stories.map(story => ({
+        _id: story._id,
+        media: story.media,
+        seenBy: story.seenBy || [],
+        isSeen: story.isSeen,
+        createdAt: story.createdAt,
+        user: item.user,
+      }));
+
+      navigation.navigate('STORY_VIEWER', {
+        stories: flattenedStories,
+        initialIndex: 0,
+      });
     },
     [navigation]
   );
@@ -98,12 +88,15 @@ const StoryList = ({ navigation }) => {
       showsHorizontalScrollIndicator={false}
       keyExtractor={item =>
         item.isMe
-          ? `me-${item.user?._id || 'self'}`
+          ? `me-${item.user._id}`
           : `story-${item.user._id}`
       }
       renderItem={({ item }) => (
         <StoryItem
-          item={item}
+          item={{
+            ...item,
+            hasStory: item.stories.length > 0,
+          }}
           onPress={() => handlePress(item)}
         />
       )}

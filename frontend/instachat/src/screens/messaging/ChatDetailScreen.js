@@ -26,8 +26,12 @@ import { getSocket } from '../../services/socket';
 import api from '../../services/api';
 
 const ChatDetailScreen = ({ route, navigation }) => {
-  const { chatId, username = 'User', receiverId, profilePicture } =
-    route?.params || {};
+  const {
+    chatId,
+    username = 'User',
+    receiverId,
+    profilePicture,
+  } = route?.params || {};
 
   const dispatch = useDispatch();
   const socket = getSocket();
@@ -43,7 +47,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
   const { user } = useSelector(state => state.auth);
 
   /* =========================
-     PARAM VALIDATION
+     VALIDATION
   ========================= */
   useEffect(() => {
     if (!chatId || !receiverId) {
@@ -53,7 +57,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
   }, [chatId, receiverId, navigation]);
 
   /* =========================
-     LOAD MESSAGES (ONCE PER CHAT)
+     LOAD MESSAGES
   ========================= */
   useEffect(() => {
     if (!chatId || initializedRef.current) return;
@@ -61,36 +65,24 @@ const ChatDetailScreen = ({ route, navigation }) => {
     initializedRef.current = true;
     dispatch(fetchMessages(chatId));
 
-    // Mark read (fire and forget)
     api.post(`/chats/${chatId}/read`).catch(() => {});
 
-    // Join socket room
-    if (socket) {
-      socket.emit('join_chat', chatId);
-    }
+    socket?.emit('join_chat', chatId);
 
     return () => {
       initializedRef.current = false;
-      if (socket) {
-        socket.emit('leave_chat', chatId);
-      }
+      socket?.emit('leave_chat', chatId);
     };
   }, [chatId, dispatch, socket]);
 
   /* =========================
-     SOCKET LISTENERS (ATTACH ONCE)
+     SOCKET EVENTS
   ========================= */
   useEffect(() => {
     if (!socket) return;
 
-    const onMessage = message => {
-      dispatch(addMessage(message));
-    };
-
-    const onDelete = payload => {
-      dispatch(messageDeleted(payload));
-    };
-
+    const onMessage = msg => dispatch(addMessage(msg));
+    const onDelete = payload => dispatch(messageDeleted(payload));
     const onTyping = () => setTyping(true);
     const onStopTyping = () => setTyping(false);
 
@@ -108,7 +100,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
   }, [socket, dispatch]);
 
   /* =========================
-     AUTO SCROLL (SAFE)
+     AUTO SCROLL
   ========================= */
   useEffect(() => {
     if (messages.length > 0) {
@@ -119,7 +111,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
   }, [messages.length]);
 
   /* =========================
-     SEND MESSAGE (PLAIN TEXT)
+     SEND MESSAGE
   ========================= */
   const handleSend = async () => {
     if (!text.trim() || sending) return;
@@ -137,7 +129,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
         })
       );
       socket?.emit('stop_typing', chatId);
-    } catch (e) {
+    } catch {
       Alert.alert('Failed', 'Message not sent');
       setText(messageText);
     }
@@ -152,26 +144,29 @@ const ChatDetailScreen = ({ route, navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
+
         <Image
-          source={{ uri: profilePicture || 'https://via.placeholder.com/40' }}
+          source={{
+            uri: profilePicture || 'https://via.placeholder.com/40',
+          }}
           style={styles.avatar}
         />
+
         <Text style={styles.name}>{username}</Text>
       </View>
 
-      {/* CHAT BODY */}
-      {/* ✅ FIX FOR KEYBOARD COVERING INPUT:
-         - Android: behavior="height" (works best with 'resize' in app.json)
-         - iOS: behavior="padding" (standard for iOS)
-      */}
+      {/* BODY */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 70 : 0}
       >
         <View style={{ flex: 1 }}>
           {loading && messages.length === 0 ? (
-            <ActivityIndicator style={{ flex: 1 }} color="#fff" />
+            <ActivityIndicator
+              style={{ flex: 1 }}
+              color="#fff"
+            />
           ) : (
             <FlatList
               ref={flatListRef}
@@ -181,37 +176,49 @@ const ChatDetailScreen = ({ route, navigation }) => {
                 <MessageBubble
                   message={item}
                   isOwnMessage={
-                    (item.sender?._id || item.sender) === user._id
+                    (item.sender?._id || item.sender) ===
+                    user._id
                   }
                 />
               )}
-              contentContainerStyle={{ padding: 12, flexGrow: 1 }}
+              contentContainerStyle={{
+                padding: 12,
+                paddingBottom: 20,
+                flexGrow: 1,
+              }}
+              keyboardShouldPersistTaps="handled"
             />
           )}
 
-          {typing && <Text style={styles.typing}>typing...</Text>}
+          {typing && (
+            <Text style={styles.typing}>typing…</Text>
+          )}
         </View>
 
-        {/* INPUT */}
+        {/* INPUT BAR */}
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
-            placeholder="Message..."
+            placeholder="Message…"
             placeholderTextColor="#888"
             value={text}
             onChangeText={setText}
             multiline
             editable={!sending}
           />
-          {text.trim() ? (
-            <TouchableOpacity onPress={handleSend} disabled={sending}>
+
+          {text.trim() && (
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={sending}
+            >
               {sending ? (
                 <ActivityIndicator color="#0095f6" />
               ) : (
                 <Text style={styles.send}>Send</Text>
               )}
             </TouchableOpacity>
-          ) : null}
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -225,6 +232,7 @@ export default ChatDetailScreen;
 ========================= */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -232,6 +240,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#262626',
   },
+
   avatar: {
     width: 36,
     height: 36,
@@ -239,12 +248,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     backgroundColor: '#262626',
   },
+
   name: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
     flex: 1,
   },
+
   typing: {
     color: '#888',
     fontSize: 13,
@@ -252,13 +263,16 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     fontStyle: 'italic',
   },
+
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: 8,
     borderTopWidth: 0.5,
     borderTopColor: '#262626',
+    backgroundColor: '#000',
   },
+
   input: {
     flex: 1,
     backgroundColor: '#262626',
@@ -267,8 +281,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#fff',
     fontSize: 16,
-    maxHeight: 100,
+    maxHeight: 120,
   },
+
   send: {
     color: '#0095f6',
     fontSize: 16,

@@ -20,8 +20,8 @@ const allowSocketEvent = async (userId, event, limit, windowSeconds) => {
     }
 
     return count <= limit;
-  } catch (err) {
-    // Fail-open: never block sockets if Redis fails
+  } catch {
+    // Fail-open: never block sockets
     return true;
   }
 };
@@ -65,7 +65,7 @@ const initSocket = (server) => {
 
       socket.user = user;
       next();
-    } catch (err) {
+    } catch {
       next(new Error('Authentication error: Invalid token'));
     }
   });
@@ -79,27 +79,14 @@ const initSocket = (server) => {
     const userId = socket.user._id.toString();
     console.log(`⚡ Socket Connected: ${socket.user.username} (${socket.id})`);
 
-    // Personal room (notifications, direct emits)
+    // Personal room
     socket.join(userId);
     socket.emit('connected');
 
     /**
-     * =========================
      * USER ONLINE (REDIS)
-     * =========================
      */
-    try {
-      await redis.set(
-        `user:${userId}:online`,
-        socket.id,
-        'EX',
-        30
-      );
-    } catch (err) {
-      // silent
-    }
-
-    socket.presenceInterval = setInterval(async () => {
+    const setOnline = async () => {
       try {
         await redis.set(
           `user:${userId}:online`,
@@ -107,15 +94,15 @@ const initSocket = (server) => {
           'EX',
           30
         );
-      } catch (err) {
-        // silent
-      }
-    }, 15000);
+      } catch {}
+    };
+
+    await setOnline();
+
+    socket.presenceInterval = setInterval(setOnline, 15000);
 
     /**
-     * =========================
-     * JOIN CHAT ROOM
-     * =========================
+     * JOIN CHAT
      */
     socket.on('join_chat', async (chatId) => {
       if (!chatId) return;
@@ -128,15 +115,11 @@ const initSocket = (server) => {
       );
 
       if (!allowed) return;
-
       socket.join(chatId);
-      console.log(`👥 ${socket.user.username} joined chat ${chatId}`);
     });
 
     /**
-     * =========================
-     * TYPING INDICATOR
-     * =========================
+     * TYPING
      */
     socket.on('typing', async (chatId) => {
       if (!chatId) return;
@@ -162,9 +145,7 @@ const initSocket = (server) => {
     });
 
     /**
-     * =========================
-     * NEW MESSAGE (PLAIN TEXT)
-     * =========================
+     * NEW MESSAGE
      */
     socket.on('new_message', async (message) => {
       if (
@@ -201,9 +182,7 @@ const initSocket = (server) => {
     });
 
     /**
-     * =========================
      * DISCONNECT
-     * =========================
      */
     socket.on('disconnect', async () => {
       console.log(`🔌 Socket Disconnected: ${socket.user.username}`);
@@ -214,17 +193,13 @@ const initSocket = (server) => {
 
       try {
         await redis.del(`user:${userId}:online`);
-      } catch (err) {
-        // silent
-      }
+      } catch {}
 
       try {
         await User.findByIdAndUpdate(userId, {
           lastSeen: new Date(),
         });
-      } catch (err) {
-        // silent
-      }
+      } catch {}
 
       socket.leave(userId);
     });
@@ -243,7 +218,23 @@ const getIO = () => {
   return io;
 };
 
+/**
+ * ======================================================
+ * 🔥 GET SOCKET ID BY USER ID (REDIS)
+ * ======================================================
+ */
+const getSocketIdByUserId = async (userId) => {
+  if (!userId) return null;
+
+  try {
+    return await redis.get(`user:${userId}:online`);
+  } catch {
+    return null;
+  }
+};
+
 module.exports = {
   initSocket,
   getIO,
+  getSocketIdByUserId, // ✅ REQUIRED EXPORT
 };

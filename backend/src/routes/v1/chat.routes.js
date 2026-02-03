@@ -19,19 +19,22 @@ router.get('/with/:userId', chatController.getOrCreateChat);
 // 2️⃣ Inbox (recent chats)
 router.get('/', chatController.getRecentChats);
 
-// 3️⃣ Send message (E2EE)
+// 3️⃣ ✅ GET UNREAD MESSAGE COUNT
+router.get('/unread-count', chatController.getUnreadCount);
+
+// 4️⃣ Send message
 router.post('/message', chatController.sendMessage);
 
-// 4️⃣ ✅ MARK MESSAGES AS READ
+// 5️⃣ Mark messages as read
 router.post('/:chatId/read', chatController.markMessagesRead);
 
-// 5️⃣ Delete message (me / everyone)
+// 6️⃣ Delete message (me / everyone)
 router.post(
   '/message/:messageId/delete',
   chatController.deleteMessage
 );
 
-// 6️⃣ Chat history
+// 7️⃣ Chat history
 router.get('/:chatId', chatController.getChatHistory);
 
 module.exports = router;

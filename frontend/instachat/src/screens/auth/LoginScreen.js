@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Modal,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
+
 import { loginUser } from '../../redux/slices/authSlice';
 import { ROUTES } from '../../navigation/routes.constants';
 import colors from '../../theme/colors';
-// import axios from '../../api/axios'; // adjust path if needed
 
 const LoginScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -22,63 +21,41 @@ const LoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Forgot password state
-  const [forgotVisible, setForgotVisible] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotLoading, setForgotLoading] = useState(false);
+  /* =========================
+     CLEAR PASSWORD ON LOAD
+     (Fixes login after reset)
+  ========================= */
+  useEffect(() => {
+    setPassword('');
+  }, []);
 
+  /* =========================
+     LOGIN
+  ========================= */
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert('Missing details', 'Please enter email and password');
       return;
     }
 
-    setSubmitting(true);
-
-    const result = await dispatch(
-      loginUser({
-        email: email.trim().toLowerCase(),
-        password,
-      })
-    );
-
-    setSubmitting(false);
-
-    if (!loginUser.fulfilled.match(result)) {
-      Alert.alert(
-        'Login failed',
-        result.payload || 'Invalid email or password'
-      );
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    if (!forgotEmail.trim()) {
-      Alert.alert('Missing email', 'Please enter your email');
-      return;
-    }
-
     try {
-      setForgotLoading(true);
+      setSubmitting(true);
 
-      await axios.post('/auth/forgot-password', {
-        email: forgotEmail.trim().toLowerCase(),
-      });
-
-      Alert.alert(
-        'Check your email',
-        'Password reset instructions have been sent.'
+      const result = await dispatch(
+        loginUser({
+          email: email.trim().toLowerCase(),
+          password,
+        })
       );
 
-      setForgotVisible(false);
-      setForgotEmail('');
-    } catch (error) {
-      Alert.alert(
-        'Error',
-        error?.response?.data?.message || 'Something went wrong'
-      );
+      if (!loginUser.fulfilled.match(result)) {
+        Alert.alert(
+          'Login failed',
+          result.payload || 'Invalid email or password'
+        );
+      }
     } finally {
-      setForgotLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -96,24 +73,24 @@ const LoginScreen = ({ navigation }) => {
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="email-address"
-        selectionColor="#000"
       />
 
-      {/* Password (masked dots BLACK) */}
+      {/* Password */}
       <TextInput
-        style={[styles.input, styles.passwordInput]}
+        style={styles.input}
         placeholder="Password"
         placeholderTextColor="#999"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        selectionColor="#000"
       />
 
       {/* Forgot password */}
       <TouchableOpacity
         style={styles.forgotLink}
-        onPress={() => setForgotVisible(true)}
+        onPress={() =>
+          navigation.navigate(ROUTES.FORGOT_PASSWORD_EMAIL)
+        }
       >
         <Text style={styles.forgotText}>Forgot password?</Text>
       </TouchableOpacity>
@@ -144,52 +121,6 @@ const LoginScreen = ({ navigation }) => {
           <Text style={styles.signupHighlight}>Sign up</Text>
         </Text>
       </TouchableOpacity>
-
-      {/* Forgot Password Modal */}
-      <Modal
-        visible={forgotVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setForgotVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Reset Password</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor="#999"
-              value={forgotEmail}
-              onChangeText={setForgotEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              selectionColor="#000"
-            />
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleForgotPassword}
-              disabled={forgotLoading}
-            >
-              {forgotLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>
-                  Send reset link
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.cancelLink}
-              onPress={() => setForgotVisible(false)}
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -199,6 +130,7 @@ export default LoginScreen;
 /* =========================
    STYLES
 ========================= */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -224,11 +156,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 14,
     fontSize: 16,
-    color: '#000', // default text color
-  },
-
-  passwordInput: {
-    color: '#000', // ✅ masked dots BLACK
+    color: '#000',
   },
 
   forgotLink: {
@@ -273,36 +201,5 @@ const styles = StyleSheet.create({
   signupHighlight: {
     color: colors.primary,
     fontWeight: '600',
-  },
-
-  /* Modal */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-
-  modalBox: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 20,
-  },
-
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-
-  cancelLink: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-
-  cancelText: {
-    color: '#666',
-    fontSize: 14,
   },
 });

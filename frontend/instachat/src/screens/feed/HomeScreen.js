@@ -19,14 +19,15 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import AsyncStorage from '@react-native-async-storage/async-storage'; // ✅ ADDED
 import { fetchFeed } from '../../redux/slices/feedSlice';
 import {
   fetchStories,
-  setViewedStories, // ✅ ADDED
+  setViewedStories,
 } from '../../redux/slices/storySlice';
 import { setUnreadCount } from '../../redux/slices/notificationSlice';
 import { getUnreadCount } from '../../api/Notification.api';
@@ -46,18 +47,23 @@ const HomeScreen = ({ navigation }) => {
 
   const { posts = [], loading } = useSelector(state => state.feed);
   const currentUserId = useSelector(state => state.auth.user?._id);
-  const unreadCount = useSelector(state => state.notifications.unreadCount);
+  const unreadCount = useSelector(
+    state => state.notifications.unreadCount
+  );
 
   const [showMenu, setShowMenu] = useState(false);
   const [visiblePostId, setVisiblePostId] = useState(null);
   const [uploadPreviews, setUploadPreviews] = useState([]);
+  const [deletedPostIds, setDeletedPostIds] = useState(new Set());
 
   /* ======================
-     RESTORE VIEWED STORIES (✅ ADDED)
+     RESTORE VIEWED STORIES
   ====================== */
   useEffect(() => {
     const restoreViewedStories = async () => {
-      const stored = await AsyncStorage.getItem('@instachat_viewed_stories');
+      const stored = await AsyncStorage.getItem(
+        '@instachat_viewed_stories'
+      );
       if (stored) {
         dispatch(setViewedStories(JSON.parse(stored)));
       }
@@ -69,31 +75,33 @@ const HomeScreen = ({ navigation }) => {
   /* ======================
      FETCH UNREAD COUNT
   ====================== */
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await getUnreadCount();
       dispatch(setUnreadCount(res.data.count));
     } catch (err) {
-      console.error('Error fetching unread count:', err);
+      console.error('Unread count error:', err);
     }
-  };
-
-  /* ======================
-     INITIAL LOAD
-  ====================== */
-  useEffect(() => {
-    dispatch(fetchFeed());
-    dispatch(fetchStories());
-    fetchUnreadCount();
   }, [dispatch]);
 
   /* ======================
-     REFRESH UNREAD COUNT PERIODICALLY
+     INITIAL LOAD (FOCUS SAFE)
+  ====================== */
+  useFocusEffect(
+    useCallback(() => {
+      dispatch(fetchFeed());
+      dispatch(fetchStories());
+      fetchUnreadCount();
+    }, [dispatch, fetchUnreadCount])
+  );
+
+  /* ======================
+     UNREAD COUNT POLLING
   ====================== */
   useEffect(() => {
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchUnreadCount]);
 
   /* ======================
      REFRESH AFTER UPLOAD
@@ -118,22 +126,16 @@ const HomeScreen = ({ navigation }) => {
           type: item.file.type.startsWith('video')
             ? 'video'
             : 'image',
-          variants: {
-            original: item.file.uri,
-          },
+          variants: { original: item.file.uri },
         },
-        user: {
-          username: 'You',
-          profilePicture: null,
-        },
+        user: { username: 'You', profilePicture: null },
       }));
 
       setUploadPreviews(previews);
     };
 
     feedEvents.on('uploadUpdate', onUploadUpdate);
-    return () =>
-      feedEvents.off('uploadUpdate', onUploadUpdate);
+    return () => feedEvents.off('uploadUpdate', onUploadUpdate);
   }, []);
 
   /* ======================
@@ -143,10 +145,23 @@ const HomeScreen = ({ navigation }) => {
     dispatch(fetchFeed());
     dispatch(fetchStories());
     fetchUnreadCount();
-  }, [dispatch]);
+  }, [dispatch, fetchUnreadCount]);
 
-  const { refreshing, onRefresh } =
-    usePullToRefresh(handleRefresh);
+  const { refreshing, onRefresh } = usePullToRefresh(handleRefresh);
+
+  /* ======================
+     HANDLE POST DELETION
+  ====================== */
+  const handlePostDeleted = useCallback((postId) => {
+    console.log('Post deleted:', postId);
+    // Add to deleted set for immediate UI update
+    setDeletedPostIds(prev => new Set([...prev, postId]));
+    
+    // Optionally refresh feed after a short delay
+    setTimeout(() => {
+      dispatch(fetchFeed());
+    }, 500);
+  }, [dispatch]);
 
   /* ======================
      NORMALIZE POSTS
@@ -154,62 +169,59 @@ const HomeScreen = ({ navigation }) => {
   const normalizedPosts = useMemo(() => {
     if (!currentUserId) return posts;
 
-    return posts.map(post => ({
-      ...post,
-      isLiked:
-        Array.isArray(post.likes) &&
-        post.likes.includes(currentUserId),
-    }));
-  }, [posts, currentUserId]);
+    return posts
+      .filter(post => !deletedPostIds.has(post._id)) // Filter out deleted posts
+      .map(post => ({
+        ...post,
+        isLiked:
+          Array.isArray(post.likes) &&
+          post.likes.includes(currentUserId),
+      }));
+  }, [posts, currentUserId, deletedPostIds]);
 
-  /* ======================
-     MERGE UPLOADS + FEED
-  ====================== */
   const mergedPosts = useMemo(
     () => [...uploadPreviews, ...normalizedPosts],
     [uploadPreviews, normalizedPosts]
   );
 
   /* ======================
-     VIEWABILITY (VIDEO)
+     VIEWABILITY
   ====================== */
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: VIEWABILITY_THRESHOLD,
   }).current;
 
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }) => {
-      const first = viewableItems?.[0];
-      if (first?.item?._id) {
-        setVisiblePostId(first.item._id);
-      }
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    const first = viewableItems?.[0];
+    if (first?.item?._id) {
+      setVisiblePostId(first.item._id);
     }
-  ).current;
+  }).current;
 
   /* ======================
-   NAVIGATION
-====================== */
-const openMenu = () => setShowMenu(true);
-const closeMenu = () => setShowMenu(false);
+     NAVIGATION
+  ====================== */
+  const openMenu = () => setShowMenu(true);
+  const closeMenu = () => setShowMenu(false);
 
-const goToCreatePost = () => {
-  closeMenu();
-  navigation.navigate(ROUTES.CREATE_POST);
-};
+  const goToCreatePost = () => {
+    closeMenu();
+    navigation.navigate(ROUTES.CREATE_POST);
+  };
 
-const goToCreateReel = () => {
-  closeMenu();
-  navigation.navigate(ROUTES.UPLOAD_REEL);
-};
+  const goToCreateReel = () => {
+    closeMenu();
+    navigation.navigate(ROUTES.UPLOAD_REEL);
+  };
 
-const goToCreateStory = () => {
-  closeMenu();
-  navigation.navigate(ROUTES.CREATE_STORY);
-};
+  const goToCreateStory = () => {
+    closeMenu();
+    navigation.navigate(ROUTES.CREATE_STORY);
+  };
 
-const goToNotifications = () => {
-  navigation.getParent().navigate(ROUTES.NOTIFICATIONS);
-};
+  const goToNotifications = () => {
+    navigation.getParent().navigate(ROUTES.NOTIFICATIONS);
+  };
 
   /* ======================
      RENDERERS
@@ -218,6 +230,7 @@ const goToNotifications = () => {
     <FeedPost
       post={item}
       isVisible={item._id === visiblePostId}
+      onPostDeleted={handlePostDeleted}
     />
   );
 
@@ -229,11 +242,7 @@ const goToNotifications = () => {
 
   const renderEmpty = () => (
     <View style={styles.empty}>
-      <Ionicons
-        name="image-outline"
-        size={64}
-        color="#666"
-      />
+      <Ionicons name="image-outline" size={64} color="#666" />
       <Text style={styles.emptyText}>No posts yet</Text>
       <Text style={styles.emptySubText}>
         Follow users or create your first post
@@ -244,17 +253,8 @@ const goToNotifications = () => {
   const showLoader = loading && mergedPosts.length === 0;
 
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        { paddingBottom: insets.bottom },
-      ]}
-      edges={['top', 'bottom']}
-    >
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor="#000"
-      />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={openMenu}>
@@ -267,11 +267,7 @@ const goToNotifications = () => {
           style={styles.notificationIcon}
           onPress={goToNotifications}
         >
-          <Ionicons
-            name="heart-outline"
-            size={26}
-            color="#fff"
-          />
+          <Ionicons name="heart-outline" size={26} color="#fff" />
           {unreadCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
@@ -306,9 +302,7 @@ const goToNotifications = () => {
           removeClippedSubviews
           initialNumToRender={2}
           windowSize={3}
-          contentContainerStyle={{
-            paddingBottom: insets.bottom + 20,
-          }}
+          contentContainerStyle={{ paddingBottom: 0 }}
         />
       )}
 
@@ -329,11 +323,7 @@ export default React.memo(HomeScreen);
    STYLES
 ====================== */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-
+  container: { flex: 1, backgroundColor: '#000' },
   header: {
     height: HEADER_HEIGHT,
     paddingHorizontal: 15,
@@ -341,18 +331,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   logo: {
     color: '#fff',
     fontSize: 28,
     fontWeight: '700',
     fontStyle: 'italic',
   },
-
-  notificationIcon: {
-    position: 'relative',
-  },
-
+  notificationIcon: { position: 'relative' },
   badge: {
     position: 'absolute',
     top: -5,
@@ -365,36 +350,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4,
   },
-
   badgeText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: 'bold',
   },
-
-  storyContainer: {
-    marginVertical: 10,
-  },
-
+  storyContainer: { marginVertical: 10 },
   loader: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   empty: {
     alignItems: 'center',
     marginTop: 80,
     paddingHorizontal: 20,
   },
-
   emptyText: {
     color: '#fff',
     fontSize: 18,
     marginTop: 10,
     fontWeight: '600',
   },
-
   emptySubText: {
     color: '#888',
     marginTop: 6,

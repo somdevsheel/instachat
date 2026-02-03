@@ -4,10 +4,16 @@ export const ROUTES = {
   ========================= */
   LOGIN: 'AUTH_LOGIN',
   SIGNUP: 'AUTH_SIGNUP',
+  SIGNUP_OTP: 'AUTH_SIGNUP_OTP',
+
+  FORGOT_PASSWORD_EMAIL: 'AUTH_FORGOT_PASSWORD_EMAIL',
+  FORGOT_PASSWORD_OTP: 'AUTH_FORGOT_PASSWORD_OTP',
+
   /* =========================
      ROOT / NAV CONTAINERS
   ========================= */
   MAIN_TAB: 'MAIN_TAB',
+
   /* =========================
      TABS
   ========================= */
@@ -16,27 +22,32 @@ export const ROUTES = {
   REELS: 'REELS',
   MESSAGES: 'MESSAGES',
   PROFILE: 'PROFILE',
+
   /* =========================
      FEED / POSTS
   ========================= */
   CREATE_POST: 'CREATE_POST',
-  POST_DETAIL: 'POST_DETAIL', // ✅ Add this
+  POST_DETAIL: 'POST_DETAIL',
   COMMENTS: 'COMMENTS',
+
   /* =========================
      STORIES / REELS
   ========================= */
   CREATE_STORY: 'CREATE_STORY',
   UPLOAD_REEL: 'UPLOAD_REEL',
+
   /* =========================
      CHAT
   ========================= */
   CHAT_LIST: 'CHAT_LIST',
   CHAT_DETAIL: 'CHAT_DETAIL',
   NEW_CHAT: 'NEW_CHAT',
+
   /* =========================
      NOTIFICATIONS
   ========================= */
   NOTIFICATIONS: 'NOTIFICATIONS',
+
   /* =========================
      PROFILE
   ========================= */
@@ -45,6 +56,7 @@ export const ROUTES = {
   FOLLOW_LIST: 'FOLLOW_LIST',
   FOLLOWERS_LIST: 'FOLLOWERS_LIST',
   FOLLOWING_LIST: 'FOLLOWING_LIST',
+
   /* =========================
      SETTINGS
   ========================= */

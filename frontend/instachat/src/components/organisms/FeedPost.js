@@ -8,6 +8,7 @@ import {
   Dimensions,
   Pressable,
   Alert,
+  Modal,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,6 +55,12 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
   ========================= */
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(globalMute);
+
+  /* =========================
+     MENU STATE
+  ========================= */
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   /* =========================
      SYNC ON FEED UPDATE
@@ -170,21 +177,49 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
     });
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete post', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deletePost(post._id);
-          onPostDeleted?.(post._id);
-        },
-      },
-    ]);
+  /* =========================
+     MENU HANDLERS
+  ========================= */
+  const openMenu = () => {
+    setMenuVisible(true);
   };
 
-  if (!mediaUrl) return null;
+  const closeMenu = () => {
+    setMenuVisible(false);
+  };
+
+  const handleDeletePress = () => {
+    closeMenu();
+    
+    Alert.alert(
+      'Delete post?',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await deletePost(post._id);
+              onPostDeleted?.(post._id);
+            } catch (error) {
+              console.error('Delete error:', error);
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const isOwnPost = user._id === currentUserId;
+
+  if (!mediaUrl || isDeleting) return null;
 
   return (
     <View style={styles.container}>
@@ -202,15 +237,13 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
           </Text>
         </TouchableOpacity>
 
-        {user._id === currentUserId && (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons
-              name="ellipsis-horizontal"
-              size={22}
-              color="#fff"
-            />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={openMenu}>
+          <Ionicons
+            name="ellipsis-horizontal"
+            size={22}
+            color="#fff"
+          />
+        </TouchableOpacity>
       </View>
 
       {/* MEDIA */}
@@ -294,6 +327,58 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
           </Text>
         )}
       </View>
+
+      {/* MENU MODAL */}
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <Pressable style={styles.menuBackdrop} onPress={closeMenu}>
+          <View 
+            style={styles.menuSheet}
+            onStartShouldSetResponder={() => true}
+          >
+            {isOwnPost ? (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={handleDeletePress}
+                >
+                  <Text style={[styles.menuText, styles.deleteText]}>
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={closeMenu}
+                >
+                  <Text style={styles.menuText}>Report</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={closeMenu}
+                >
+                  <Text style={styles.menuText}>Unfollow</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+              </>
+            )}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={closeMenu}
+            >
+              <Text style={styles.menuText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -305,7 +390,7 @@ export default memo(FeedPost);
 ========================= */
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 6,
   },
 
   header: {
@@ -378,5 +463,40 @@ const styles = StyleSheet.create({
   caption: {
     color: '#fff',
     lineHeight: 18,
+  },
+
+  // Menu Modal Styles
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+
+  menuSheet: {
+    backgroundColor: '#262626',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    paddingBottom: 20,
+  },
+
+  menuItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+
+  menuText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+
+  deleteText: {
+    color: '#FF3B30',
+    fontWeight: '600',
+  },
+
+  menuDivider: {
+    height: 0.5,
+    backgroundColor: '#444',
   },
 });

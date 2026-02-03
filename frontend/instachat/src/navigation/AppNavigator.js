@@ -56,7 +56,9 @@ const Stack = createStackNavigator();
 
 export default function AppNavigator() {
   const dispatch = useDispatch();
-  const { isAuthenticated, loading } = useSelector(state => state.auth);
+  const { isAuthenticated, loading } = useSelector(
+    (state) => state.auth
+  );
 
   /* =========================
      LOAD USER ON APP START
@@ -65,6 +67,7 @@ export default function AppNavigator() {
     dispatch(loadUser());
   }, [dispatch]);
 
+  // While checking auth state
   if (loading) return null;
 
   return (
@@ -77,16 +80,19 @@ export default function AppNavigator() {
       >
         {isAuthenticated ? (
           <>
+            {/* ✅ MAIN LOGGED-IN ENTRY */}
             <Stack.Screen
               name={ROUTES.MAIN_TAB}
               component={MainTab}
             />
 
+            {/* Notifications */}
             <Stack.Screen
               name={ROUTES.NOTIFICATIONS}
               component={NotificationScreen}
             />
 
+            {/* Messaging */}
             <Stack.Screen
               name={ROUTES.CHAT_LIST}
               component={ChatListScreen}
@@ -100,6 +106,7 @@ export default function AppNavigator() {
               component={NewChatScreen}
             />
 
+            {/* Content */}
             <Stack.Screen
               name={ROUTES.CREATE_POST}
               component={CreatePostScreen}
@@ -117,18 +124,20 @@ export default function AppNavigator() {
               component={CreateStoryScreen}
             />
 
+            {/* Comments */}
             <Stack.Screen
               name={ROUTES.COMMENTS}
               component={CommentsScreen}
               options={{ headerShown: true }}
             />
 
+            {/* Story Viewer */}
             <Stack.Screen
               name="STORY_VIEWER"
               component={StoryViewer}
-              options={{ headerShown: false }}
             />
 
+            {/* Profile */}
             <Stack.Screen
               name={ROUTES.USER_PROFILE}
               component={UserProfileScreen}
@@ -158,6 +167,7 @@ export default function AppNavigator() {
               component={ChangePasswordScreen}
             />
 
+            {/* Follow lists */}
             <Stack.Screen
               name={ROUTES.FOLLOW_LIST}
               component={FollowListScreen}
@@ -172,6 +182,7 @@ export default function AppNavigator() {
             />
           </>
         ) : (
+          /* ❌ NOT AUTHENTICATED */
           <Stack.Screen
             name="AUTH"
             component={AuthStack}

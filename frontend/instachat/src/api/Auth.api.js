@@ -1,5 +1,13 @@
 import api from '../services/api';
 
+/* =========================
+   AUTH
+========================= */
+
+/**
+ * ❌ Old direct register (keep only if backend still supports it)
+ * If backend register route is removed, do NOT use this.
+ */
 export const register = async (userData) => {
   const res = await api.post('/auth/register', userData);
   return res.data;
@@ -15,18 +23,110 @@ export const logout = async () => {
   return res.data;
 };
 
-// change password
-export const changePassword = async (currentPassword, newPassword) => {
-  const res = await api.put('/auth/change-password', {
+export const getMe = async () => {
+  const res = await api.get('/auth/me');
+  return res.data;
+};
+
+/* =========================
+   REGISTER WITH OTP (NEW)
+========================= */
+
+/**
+ * STEP 1: Request OTP for registration
+ * Backend: POST /api/v1/auth/register/request-otp
+ */
+// export const requestRegisterOtp = async (email) => {
+//   const res = await api.post('/auth/register/request-otp', { email });
+//   return res.data;
+// };
+
+// /**
+//  * STEP 2: Verify OTP & create account
+//  * Backend: POST /api/v1/auth/register/verify-otp
+//  */
+// export const verifyRegisterOtp = async (email, otp, password) => {
+//   const res = await api.post('/auth/register/verify-otp', {
+//     email,
+//     otp,
+//     password,
+//   });
+//   return res.data;
+// };
+
+export const requestRegisterOtp = async (email) => {
+  const res = await api.post('/auth/register/request-otp', {
+    email,
+  });
+  return res.data;
+};
+
+/**
+ * STEP 2: Verify OTP & create account
+ * Backend: POST /api/v1/auth/register/verify-otp
+ */
+export const verifyRegisterOtp = async ({
+  email,
+  otp,
+  password,
+  username,
+  fullName,
+}) => {
+  const res = await api.post('/auth/register/verify-otp', {
+    email,
+    otp,
+    password,
+    username,
+    fullName,
+  });
+  return res.data;
+};
+
+/* =========================
+   PASSWORD
+========================= */
+
+/**
+ * 🔐 Update password (logged-in user)
+ * Backend: PATCH /api/v1/users/update-password
+ */
+export const updatePassword = async (currentPassword, newPassword) => {
+  const res = await api.patch('/users/update-password', {
     currentPassword,
     newPassword,
   });
   return res.data;
 };
 
-// ✅ ADD THIS
-export const getMe = async () => {
-  // GET /api/v1/auth/me
-  const res = await api.get('/auth/me');
+
+
+
+
+
+/* =========================
+   FORGOT PASSWORD
+========================= */
+
+export const requestForgotPasswordOtp = async (email) => {
+  const res = await api.post(
+    "/auth/forgot-password/request-otp",
+    { email }
+  );
+  return res.data;
+};
+
+export const verifyForgotPasswordOtp = async ({
+  email,
+  otp,
+  newPassword,
+}) => {
+  const res = await api.post(
+    "/auth/forgot-password/verify-otp",
+    {
+      email,
+      otp,
+      newPassword,
+    }
+  );
   return res.data;
 };

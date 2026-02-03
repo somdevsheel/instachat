@@ -7,24 +7,24 @@ import { markStoriesViewed } from '../../redux/slices/storySlice';
 const StoryViewerWrapper = ({ route, navigation }) => {
   const dispatch = useDispatch();
 
-  const { stories = [], initialIndex = 0 } = route.params;
+  const { stories = [], initialIndex = 0 } = route.params || {};
 
-  // ✅ MARK STORIES AS VIEWED ON CLOSE
-  const handleClose = useCallback(() => {
-    if (stories.length > 0) {
-      const storyIds = stories.map(story => story._id);
-      dispatch(markStoriesViewed(storyIds));
-    }
-
-    navigation.goBack();
-  }, [dispatch, navigation, stories]);
+  const handleClose = useCallback(
+    (viewedIds = []) => {
+      if (viewedIds.length > 0) {
+        dispatch(markStoriesViewed(viewedIds));
+      }
+      navigation.goBack();
+    },
+    [dispatch, navigation]
+  );
 
   return (
     <View style={styles.container}>
       <StoryViewer
         stories={stories}
         initialIndex={initialIndex}
-        onClose={handleClose} // ✅ IMPORTANT
+        onClose={handleClose} // ✅ NOW USED
       />
     </View>
   );

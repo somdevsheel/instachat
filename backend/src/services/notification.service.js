@@ -29,7 +29,9 @@ exports.createNotification = async (data) => {
 
   // Emit real-time notification via Socket.IO
   const io = getIO();
-  const recipientSocketId = getSocketIdByUserId(recipient);
+  // const recipientSocketId = getSocketIdByUserId(recipient);
+  const recipientSocketId = await getSocketIdByUserId(recipient);
+
 
   if (recipientSocketId) {
     io.to(recipientSocketId).emit('notification:new', {
