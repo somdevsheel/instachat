@@ -19,6 +19,9 @@ const redis = require('./config/redis');
 
 const app = express();
 
+/* ✅ REQUIRED FOR NGINX / LOAD BALANCER */
+app.set('trust proxy', 1);
+
 /* ============================
    BASIC HEALTH CHECK
 ============================ */
