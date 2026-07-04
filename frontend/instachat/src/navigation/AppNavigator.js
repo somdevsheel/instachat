@@ -7,6 +7,7 @@ import { loadUser } from '../redux/slices/authSlice';
 import AuthStack from './AuthStack';
 import MainTab from './MainTab';
 import { ROUTES } from './routes.constants';
+import { navigationRef } from './navigationRef';
 
 /* =========================
    PROFILE SCREENS
@@ -71,7 +72,7 @@ export default function AppNavigator() {
   if (loading) return null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

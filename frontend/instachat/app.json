@@ -56,7 +56,14 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for recording videos."
         }
       ],
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ffffff"
+        }
+      ]
     ]
   }
 }

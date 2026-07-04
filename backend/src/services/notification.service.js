@@ -1,5 +1,14 @@
 const Notification = require('../models/notification.model');
 const { getIO, getSocketIdByUserId } = require('./socket.service');
+const pushService = require('./push.service');
+
+const PUSH_BODY_BY_TYPE = {
+  like: 'liked your post',
+  comment: 'commented on your post',
+  follow: 'started following you',
+  message: 'sent you a message',
+  mention: 'mentioned you',
+};
 
 /**
  * Create and emit notification
@@ -39,6 +48,18 @@ exports.createNotification = async (data) => {
       _id: notification._id.toString(),
     });
   }
+
+  pushService
+    .sendPushToUsers(recipient, {
+      title: notification.sender.username,
+      body: PUSH_BODY_BY_TYPE[type] || 'sent you a notification',
+      data: {
+        type: 'notification',
+        notificationId: notification._id.toString(),
+        notificationType: type,
+      },
+    })
+    .catch((err) => console.error('Push notification error:', err.message));
 
   return notification;
 };

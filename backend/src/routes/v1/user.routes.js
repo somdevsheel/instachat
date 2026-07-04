@@ -138,6 +138,13 @@ router.get('/login-activity', protect, userController.getLoginActivity);
 router.patch('/two-factor', protect, userController.toggleTwoFactor);
 
 /* ==============================
+   🔔 PUSH NOTIFICATIONS
+============================== */
+
+router.post('/push-token', protect, userController.registerPushToken);
+router.delete('/push-token', protect, userController.removePushToken);
+
+/* ==============================
    FOLLOW / UNFOLLOW
 ============================== */
 

@@ -3079,6 +3079,63 @@ exports.getLoginActivity = async (req, res) => {
 /* ================================
    🛡️ TOGGLE TWO-FACTOR AUTH
 ================================ */
+exports.registerPushToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Push token is required',
+      });
+    }
+
+    // A device's token can migrate from another account (logout/login as
+    // someone else on the same phone) — drop it everywhere else first.
+    await User.updateMany(
+      { pushTokens: token },
+      { $pull: { pushTokens: token } }
+    );
+
+    await User.findByIdAndUpdate(req.user.id, {
+      $addToSet: { pushTokens: token },
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Register push token error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to register push token',
+    });
+  }
+};
+
+exports.removePushToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Push token is required',
+      });
+    }
+
+    await User.findByIdAndUpdate(req.user.id, {
+      $pull: { pushTokens: token },
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Remove push token error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to remove push token',
+    });
+  }
+};
+
 exports.toggleTwoFactor = async (req, res) => {
   try {
     // Step 1: Get current value

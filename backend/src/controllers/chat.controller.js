@@ -366,6 +366,7 @@ const Post = require('../models/Post');
 const Reel = require('../models/Reel');
 const { getIO } = require('../services/socket.service');
 const { getUserStatus } = require('../utils/userStatus.util');
+const pushService = require('../services/push.service');
 
 /**
  * ======================================================
@@ -587,6 +588,26 @@ exports.sendMessage = catchAsync(async (req, res) => {
   io.to(receiverId.toString()).emit('unread_count_updated', {
     count: unreadCount,
   });
+
+  const pushBody =
+    type === 'shared_post'
+      ? 'Shared a post with you'
+      : type === 'shared_reel'
+      ? 'Shared a reel with you'
+      : text;
+
+  pushService
+    .sendPushToUsers(receiverId, {
+      title: message.sender.username,
+      body: pushBody,
+      data: {
+        type: 'chat',
+        chatId: chatId.toString(),
+        senderId: senderId.toString(),
+        senderUsername: message.sender.username,
+      },
+    })
+    .catch((err) => console.error('Push notification error:', err.message));
 
   return res.status(201).json({
     success: true,

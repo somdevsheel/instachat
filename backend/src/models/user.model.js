@@ -475,6 +475,16 @@ const userSchema = mongoose.Schema(
     },
 
     /* =========================
+       PUSH NOTIFICATIONS
+    ========================= */
+
+    pushTokens: {
+      type: [String],
+      default: [],
+      select: false,
+    },
+
+    /* =========================
        PERSONAL INFO
     ========================= */
 

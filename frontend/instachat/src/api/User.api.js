@@ -365,3 +365,17 @@ export const toggleTwoFactor = async () => {
     throw err; // re-throw so SecuritySettingsScreen catch block handles it
   }
 };
+
+/* ==============================
+   PUSH NOTIFICATIONS
+============================== */
+
+export const registerPushToken = async (token) => {
+  const res = await api.post('/users/push-token', { token });
+  return res.data;
+};
+
+export const removePushToken = async (token) => {
+  const res = await api.delete('/users/push-token', { data: { token } });
+  return res.data;
+};
