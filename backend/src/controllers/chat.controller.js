@@ -362,6 +362,8 @@ const catchAsync = require('../utils/catchAsync');
 const Chat = require('../models/chat.model');
 const Message = require('../models/message.model');
 const User = require('../models/user.model');
+const Post = require('../models/Post');
+const Reel = require('../models/Reel');
 const { getIO } = require('../services/socket.service');
 const { getUserStatus } = require('../utils/userStatus.util');
 
@@ -403,6 +405,16 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
           select: 'media user createdAt',
           populate: { path: 'user', select: 'username profilePicture' },
         },
+        {
+          path: 'sharedPost',
+          select: 'media caption likesCount commentsCount user',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
+        {
+          path: 'sharedReel',
+          select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
       ],
     });
 
@@ -422,6 +434,16 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
           {
             path: 'story',
             select: 'media user createdAt',
+            populate: { path: 'user', select: 'username profilePicture' },
+          },
+          {
+            path: 'sharedPost',
+            select: 'media caption likesCount commentsCount user',
+            populate: { path: 'user', select: 'username profilePicture' },
+          },
+          {
+            path: 'sharedReel',
+            select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
             populate: { path: 'user', select: 'username profilePicture' },
           },
         ],
@@ -450,13 +472,20 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
  * ======================================================
  */
 exports.sendMessage = catchAsync(async (req, res) => {
-  const { chatId, receiverId, text, storyId } = req.body;
+  const { chatId, receiverId, text, storyId, sharedPostId, sharedReelId } = req.body;
   const senderId = req.user.id;
 
   if (!chatId || !receiverId || typeof text !== 'string') {
     return res.status(400).json({
       success: false,
       message: 'chatId, receiverId and text are required',
+    });
+  }
+
+  if (sharedPostId && sharedReelId) {
+    return res.status(400).json({
+      success: false,
+      message: 'A message cannot share both a post and a reel',
     });
   }
 
@@ -480,14 +509,34 @@ exports.sendMessage = catchAsync(async (req, res) => {
     });
   }
 
+  let sharedPost = null;
+  let sharedReel = null;
+  let type = 'text';
+
+  if (sharedPostId) {
+    sharedPost = await Post.exists({ _id: sharedPostId });
+    if (!sharedPost) {
+      return res.status(404).json({ success: false, message: 'Shared post not found' });
+    }
+    type = 'shared_post';
+  } else if (sharedReelId) {
+    sharedReel = await Reel.exists({ _id: sharedReelId });
+    if (!sharedReel) {
+      return res.status(404).json({ success: false, message: 'Shared reel not found' });
+    }
+    type = 'shared_reel';
+  }
+
   let message = await Message.create({
     chat: chatId,
     sender: senderId,
     receiver: receiverId,
     text,
     story: storyId || null,
+    sharedPost: sharedPostId || null,
+    sharedReel: sharedReelId || null,
     encryptionMode: 'plain',
-    type: 'text',
+    type,
     readBy: [{ user: senderId }],
   });
 
@@ -498,13 +547,23 @@ exports.sendMessage = catchAsync(async (req, res) => {
       select: 'media user createdAt',
       populate: { path: 'user', select: 'username profilePicture' },
     },
+    {
+      path: 'sharedPost',
+      select: 'media caption likesCount commentsCount user',
+      populate: { path: 'user', select: 'username profilePicture' },
+    },
+    {
+      path: 'sharedReel',
+      select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
+      populate: { path: 'user', select: 'username profilePicture' },
+    },
   ]);
 
   chat.lastMessage = message._id;
   await chat.save();
 
   const io = getIO();
-  
+
   // Emit message to receiver
   io.to(receiverId.toString()).emit('message_received', {
     _id: message._id,
@@ -513,6 +572,9 @@ exports.sendMessage = catchAsync(async (req, res) => {
     receiver: message.receiver,
     text: message.text,
     story: message.story,
+    sharedPost: message.sharedPost,
+    sharedReel: message.sharedReel,
+    type: message.type,
     createdAt: message.createdAt,
   });
 
@@ -706,6 +768,16 @@ exports.getChatHistory = catchAsync(async (req, res) => {
       select: 'media user createdAt',
       populate: { path: 'user', select: 'username profilePicture' },
     })
+    .populate({
+      path: 'sharedPost',
+      select: 'media caption likesCount commentsCount user',
+      populate: { path: 'user', select: 'username profilePicture' },
+    })
+    .populate({
+      path: 'sharedReel',
+      select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
+      populate: { path: 'user', select: 'username profilePicture' },
+    })
     .sort({ createdAt: 1 });
 
   res.status(200).json({
@@ -732,6 +804,16 @@ exports.getRecentChats = catchAsync(async (req, res) => {
         {
           path: 'story',
           select: 'media user createdAt',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
+        {
+          path: 'sharedPost',
+          select: 'media caption likesCount commentsCount user',
+          populate: { path: 'user', select: 'username profilePicture' },
+        },
+        {
+          path: 'sharedReel',
+          select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
           populate: { path: 'user', select: 'username profilePicture' },
         },
       ],

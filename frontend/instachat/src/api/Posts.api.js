@@ -153,36 +153,3 @@ export const getReelsFeed = async () => {
     throw err;
   }
 };
-
-export const uploadReel = async (videoUri, caption = '') => {
-  try {
-    if (!videoUri) {
-      throw new Error('Video URI is required');
-    }
-    const formData = new FormData();
-    const filename = videoUri.split('/').pop();
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `video/${match[1]}` : 'video/mp4';
-    formData.append('video', {
-      uri: videoUri,
-      name: filename,
-      type,
-    });
-    formData.append('caption', caption);
-    const res = await api.post('/reels', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    if (!res?.data?.success) {
-      throw new Error('Reel upload failed');
-    }
-    return res.data;
-  } catch (err) {
-    console.error(
-      '❌ uploadReel error:',
-      err?.response?.data || err.message
-    );
-    throw err;
-  }
-};

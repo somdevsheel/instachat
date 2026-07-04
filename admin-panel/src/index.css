@@ -1,0 +1,285 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   THEME VARIABLES
+============================================ */
+
+:root {
+  /* Dark theme (default) */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: #242424;
+  --bg-elevated: #2e2e2e;
+
+  --border-primary: #2e2e2e;
+  --border-secondary: #1a1a1a;
+
+  --text-heading: #ffffff;
+  --text-primary: #d4d4d4;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+  --text-faint: #525252;
+
+  --scrollbar-track: #111111;
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-hover: #525252;
+}
+
+.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #f1f3f5;
+  --bg-hover: #e9ecef;
+  --bg-elevated: #dee2e6;
+
+  --border-primary: #dee2e6;
+  --border-secondary: #e9ecef;
+
+  --text-heading: #111111;
+  --text-primary: #333333;
+  --text-secondary: #555555;
+  --text-muted: #888888;
+  --text-faint: #aaaaaa;
+
+  --scrollbar-track: #f1f3f5;
+  --scrollbar-thumb: #ced4da;
+  --scrollbar-hover: #adb5bd;
+}
+
+/* ============================================
+   BASE STYLES
+============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ============================================
+   SCROLLBAR
+============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+/* ============================================
+   ANIMATIONS
+============================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 149, 246, 0.3); }
+  50% { box-shadow: 0 0 12px 4px rgba(0, 149, 246, 0.15); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.25s ease-out forwards;
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ============================================
+   SEMANTIC THEME CLASSES
+============================================ */
+
+/* Text */
+.text-heading { color: var(--text-heading); }
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.text-faint { color: var(--text-faint); }
+
+/* Backgrounds */
+.bg-page { background-color: var(--bg-primary); }
+.bg-card { background-color: var(--bg-secondary); }
+.bg-surface { background-color: var(--bg-tertiary); }
+.bg-hover { background-color: var(--bg-hover); }
+.bg-elevated { background-color: var(--bg-elevated); }
+
+/* Sidebar */
+.sidebar-bg { background-color: var(--bg-secondary); }
+.sidebar-border { border-color: var(--border-primary); }
+
+/* ============================================
+   TABLE STYLES
+============================================ */
+
+.admin-table {
+  @apply w-full text-sm;
+}
+.admin-table th {
+  color: var(--text-muted);
+  background-color: var(--bg-secondary);
+  @apply text-left font-medium py-3 px-4 text-xs uppercase tracking-wider;
+  border-bottom: 1px solid var(--border-primary);
+}
+.admin-table td {
+  @apply py-3 px-4;
+  border-bottom: 1px solid var(--border-secondary);
+  color: var(--text-primary);
+}
+.admin-table tr:hover td {
+  background-color: var(--bg-hover);
+}
+
+/* ============================================
+   CARD STYLES
+============================================ */
+
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.75rem;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+.card-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.card-body {
+  padding: 1.25rem;
+}
+
+/* ============================================
+   STAT CARDS
+============================================ */
+
+.stat-card {
+  @apply relative overflow-hidden rounded-xl p-5;
+  background-color: var(--bg-secondary);
+  transition: background-color 0.3s ease;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.stat-card.blue::before { background: linear-gradient(90deg, #0095f6, #00d4ff); }
+.stat-card.green::before { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+.stat-card.red::before { background: linear-gradient(90deg, #ed4956, #ff6b6b); }
+.stat-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.stat-card.orange::before { background: linear-gradient(90deg, #f39c12, #f1c40f); }
+.stat-card.pink::before { background: linear-gradient(90deg, #ec4899, #f472b6); }
+
+/* ============================================
+   BADGE
+============================================ */
+
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+/* ============================================
+   BUTTONS
+============================================ */
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
+}
+.btn-primary {
+  @apply bg-accent-blue text-white hover:bg-accent-blue/90;
+}
+.btn-danger {
+  @apply bg-accent-red/10 text-accent-red border border-accent-red/20 hover:bg-accent-red/20;
+}
+.btn-ghost {
+  color: var(--text-secondary);
+}
+.btn-ghost:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-heading);
+}
+.btn-success {
+  @apply bg-accent-green/10 text-accent-green border border-accent-green/20 hover:bg-accent-green/20;
+}
+
+/* ============================================
+   INPUT
+============================================ */
+
+.input {
+  width: 100%;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  padding: 0.625rem 1rem;
+  color: var(--text-heading);
+  font-size: 0.875rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.input::placeholder {
+  color: var(--text-faint);
+}
+.input:focus {
+  border-color: rgba(0, 149, 246, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 149, 246, 0.25);
+}
+
+/* ============================================
+   MODAL
+============================================ */
+
+.modal-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+.modal-content {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  @apply rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto;
+}
+
+/* ============================================
+   RECHARTS TOOLTIP (THEME AWARE)
+============================================ */
+
+.light .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border-color: #dee2e6 !important;
+  color: #333333 !important;
+}

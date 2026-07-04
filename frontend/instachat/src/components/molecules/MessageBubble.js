@@ -418,6 +418,257 @@
 
 
 
+// import React from 'react';
+// import {
+//   View,
+//   Text,
+//   StyleSheet,
+//   Pressable,
+//   Alert,
+//   Image,
+// } from 'react-native';
+// import { useDispatch } from 'react-redux';
+// import colors from '../../theme/colors';
+// import { deleteMessage } from '../../redux/slices/chatSlice';
+
+// const MessageBubble = ({ message, isOwnMessage }) => {
+//   const dispatch = useDispatch();
+
+//   if (!message) return null;
+
+//   /* =========================
+//      MESSAGE TEXT
+//   ========================= */
+//   let displayText = 'Message';
+
+//   if (message.deletedForEveryone) {
+//     displayText = 'This message was deleted';
+//   } else if (typeof message.text === 'string') {
+//     displayText = message.text;
+//   }
+
+//   /* =========================
+//      STORY REPLY DETECTION
+//   ========================= */
+//   const isStoryReply =
+//     message.story &&
+//     (typeof message.story === 'object' ||
+//       typeof message.story === 'string');
+
+//   // ✅ SAFE ACCESS (populated OR id-only)
+//   const storyMediaUrl =
+//     typeof message.story === 'object'
+//       ? message.story?.media?.url || null
+//       : null;
+
+//   /* =========================
+//      READ STATUS
+//   ========================= */
+//   const isRead =
+//     isOwnMessage &&
+//     Array.isArray(message.readBy) &&
+//     message.readBy.length > 1;
+
+//   /* =========================
+//      LONG PRESS ACTIONS
+//   ========================= */
+//   const onLongPress = () => {
+//     const options = [
+//       {
+//         text: 'Delete for me',
+//         onPress: () =>
+//           dispatch(
+//             deleteMessage({
+//               messageId: message._id,
+//               mode: 'me',
+//             })
+//           ),
+//       },
+//     ];
+
+//     if (isOwnMessage) {
+//       options.push({
+//         text: 'Delete for everyone',
+//         style: 'destructive',
+//         onPress: () =>
+//           dispatch(
+//             deleteMessage({
+//               messageId: message._id,
+//               mode: 'everyone',
+//             })
+//           ),
+//       });
+//     }
+
+//     options.push({ text: 'Cancel', style: 'cancel' });
+//     Alert.alert('Options', '', options);
+//   };
+
+//   return (
+//     <Pressable
+//       onLongPress={onLongPress}
+//       delayLongPress={300}
+//       style={[styles.wrap, isOwnMessage ? styles.own : styles.other]}
+//     >
+//       <View
+//         style={[
+//           styles.bubble,
+//           isOwnMessage ? styles.ownBubble : styles.otherBubble,
+//         ]}
+//       >
+//         {/* ===== STORY REPLY PREVIEW ===== */}
+//         {isStoryReply && (
+//           <View style={styles.storyReplyContainer}>
+//             <View style={styles.storyReplyBar} />
+
+//             <View style={styles.storyReplyContent}>
+//               {storyMediaUrl && (
+//                 <Image
+//                   source={{ uri: storyMediaUrl }}
+//                   style={styles.storyThumbnail}
+//                 />
+//               )}
+
+//               <Text style={styles.storyReplyText}>
+//                 Replied to your story
+//               </Text>
+//             </View>
+//           </View>
+//         )}
+
+//         {/* ===== MESSAGE TEXT ===== */}
+//         <Text
+//           style={[
+//             styles.text,
+//             message.deletedForEveryone && styles.deleted,
+//           ]}
+//         >
+//           {displayText}
+//         </Text>
+//       </View>
+
+//       {/* ===== META ===== */}
+//       <View style={styles.meta}>
+//         <Text style={styles.time}>
+//           {new Date(message.createdAt).toLocaleTimeString([], {
+//             hour: '2-digit',
+//             minute: '2-digit',
+//           })}
+//         </Text>
+
+//         {isOwnMessage && (
+//           <Text style={[styles.tick, isRead && styles.tickRead]}>
+//             {isRead ? '✓✓' : '✓'}
+//           </Text>
+//         )}
+//       </View>
+//     </Pressable>
+//   );
+// };
+
+// export default MessageBubble;
+
+// /* =========================
+//    STYLES
+// ========================= */
+// const styles = StyleSheet.create({
+//   wrap: { marginBottom: 10, maxWidth: '80%' },
+//   own: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+//   other: { alignSelf: 'flex-start', alignItems: 'flex-start' },
+
+//   bubble: {
+//     padding: 12,
+//     borderRadius: 20,
+//     minWidth: 50,
+//   },
+//   ownBubble: {
+//     backgroundColor: colors?.primary || '#0095f6',
+//     borderBottomRightRadius: 2,
+//   },
+//   otherBubble: {
+//     backgroundColor: '#262626',
+//     borderBottomLeftRadius: 2,
+//   },
+
+//   /* ===== STORY REPLY ===== */
+//   storyReplyContainer: {
+//     marginBottom: 6,
+//   },
+//   storyReplyBar: {
+//     width: 3,
+//     height: '100%',
+//     backgroundColor: '#bbb',
+//     position: 'absolute',
+//     left: -6,
+//     top: 0,
+//     bottom: 0,
+//     borderRadius: 2,
+//   },
+//   storyReplyContent: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//   },
+//   storyThumbnail: {
+//     width: 28,
+//     height: 40,
+//     borderRadius: 6,
+//     marginRight: 8,
+//     backgroundColor: '#000',
+//   },
+//   storyReplyText: {
+//     fontSize: 12,
+//     color: '#ccc',
+//     fontStyle: 'italic',
+//   },
+
+//   /* ===== TEXT ===== */
+//   text: {
+//     fontSize: 16,
+//     color: '#fff',
+//   },
+//   deleted: {
+//     fontStyle: 'italic',
+//     opacity: 0.7,
+//   },
+
+//   meta: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     marginTop: 4,
+//   },
+//   time: {
+//     fontSize: 10,
+//     color: '#8e8e8e',
+//     marginRight: 6,
+//   },
+//   tick: {
+//     fontSize: 12,
+//     color: '#8e8e8e',
+//   },
+//   tickRead: {
+//     color: '#0095f6',
+//     fontWeight: '600',
+//   },
+// });
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * MessageBubble.js
+ *
+ * SAFE – PLAIN TEXT ONLY – NO EFFECTS – NO ASYNC – NO LOOPS
+ * + Story Reply Support
+ * + Shared Post/Reel Support
+ */
+
 import React from 'react';
 import {
   View,
@@ -430,11 +681,19 @@ import {
 import { useDispatch } from 'react-redux';
 import colors from '../../theme/colors';
 import { deleteMessage } from '../../redux/slices/chatSlice';
+import SharedContentCard from './SharedContentCard';
 
 const MessageBubble = ({ message, isOwnMessage }) => {
   const dispatch = useDispatch();
 
   if (!message) return null;
+
+  /* =========================
+     SHARED CONTENT DETECTION
+  ========================= */
+  const isSharedPost = message.type === 'shared_post' && message.sharedPost;
+  const isSharedReel = message.type === 'shared_reel' && message.sharedReel;
+  const isSharedContent = isSharedPost || isSharedReel;
 
   /* =========================
      MESSAGE TEXT
@@ -443,8 +702,12 @@ const MessageBubble = ({ message, isOwnMessage }) => {
 
   if (message.deletedForEveryone) {
     displayText = 'This message was deleted';
-  } else if (typeof message.text === 'string') {
+  } else if (typeof message.text === 'string' && message.text.trim()) {
     displayText = message.text;
+  } else if (isSharedPost) {
+    displayText = '';
+  } else if (isSharedReel) {
+    displayText = '';
   }
 
   /* =========================
@@ -510,42 +773,58 @@ const MessageBubble = ({ message, isOwnMessage }) => {
       delayLongPress={300}
       style={[styles.wrap, isOwnMessage ? styles.own : styles.other]}
     >
-      <View
-        style={[
-          styles.bubble,
-          isOwnMessage ? styles.ownBubble : styles.otherBubble,
-        ]}
-      >
-        {/* ===== STORY REPLY PREVIEW ===== */}
-        {isStoryReply && (
-          <View style={styles.storyReplyContainer}>
-            <View style={styles.storyReplyBar} />
+      {/* ===== SHARED CONTENT CARD ===== */}
+      {isSharedContent && !message.deletedForEveryone && (
+        <SharedContentCard
+          type={message.type}
+          post={message.sharedPost}
+          reel={message.sharedReel}
+          isOwnMessage={isOwnMessage}
+        />
+      )}
 
-            <View style={styles.storyReplyContent}>
-              {storyMediaUrl && (
-                <Image
-                  source={{ uri: storyMediaUrl }}
-                  style={styles.storyThumbnail}
-                />
-              )}
-
-              <Text style={styles.storyReplyText}>
-                Replied to your story
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* ===== MESSAGE TEXT ===== */}
-        <Text
+      {/* ===== BUBBLE (text, story reply, or deleted) ===== */}
+      {(displayText || isStoryReply || message.deletedForEveryone) && (
+        <View
           style={[
-            styles.text,
-            message.deletedForEveryone && styles.deleted,
+            styles.bubble,
+            isOwnMessage ? styles.ownBubble : styles.otherBubble,
+            isSharedContent && displayText && styles.sharedTextBubble,
           ]}
         >
-          {displayText}
-        </Text>
-      </View>
+          {/* ===== STORY REPLY PREVIEW ===== */}
+          {isStoryReply && !isSharedContent && (
+            <View style={styles.storyReplyContainer}>
+              <View style={styles.storyReplyBar} />
+
+              <View style={styles.storyReplyContent}>
+                {storyMediaUrl && (
+                  <Image
+                    source={{ uri: storyMediaUrl }}
+                    style={styles.storyThumbnail}
+                  />
+                )}
+
+                <Text style={styles.storyReplyText}>
+                  Replied to your story
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* ===== MESSAGE TEXT ===== */}
+          {(!!displayText || message.deletedForEveryone) && (
+            <Text
+              style={[
+                styles.text,
+                message.deletedForEveryone && styles.deleted,
+              ]}
+            >
+              {message.deletedForEveryone ? 'This message was deleted' : displayText}
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* ===== META ===== */}
       <View style={styles.meta}>
@@ -588,6 +867,10 @@ const styles = StyleSheet.create({
   otherBubble: {
     backgroundColor: '#262626',
     borderBottomLeftRadius: 2,
+  },
+  sharedTextBubble: {
+    marginTop: 4,
+    borderRadius: 16,
   },
 
   /* ===== STORY REPLY ===== */
