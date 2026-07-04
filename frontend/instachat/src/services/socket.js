@@ -10,8 +10,8 @@ import {
 } from '../redux/slices/chatSlice';
 import Toast from 'react-native-toast-message';
 
-const SOCKET_URL = "https://api.grownoww.com";
-// const SOCKET_URL = 'http://192.168.1.3:5000';
+// const SOCKET_URL = "https://api.grownoww.com";
+const SOCKET_URL = 'http://192.168.1.3:5000';
 
 let socket = null;
 
