@@ -1,0 +1,8 @@
+{
+  "name": "instachat-monorepo",
+  "private": true,
+  "workspaces": [
+    "frontend/shared",
+    "frontend/web"
+  ]
+}

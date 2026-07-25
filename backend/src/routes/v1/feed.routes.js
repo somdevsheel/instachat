@@ -13,6 +13,16 @@ const router = express.Router();
 // Get feed (all posts)
 router.get('/', protect, postController.getFeed);
 
+// Trending hashtags
+router.get('/trending', protect, postController.getTrending);
+
+// Saved posts
+router.get('/saved', protect, postController.getSavedPosts);
+router.put('/posts/:postId/save', protect, postController.toggleSavePost);
+
+// Share count
+router.put('/posts/:postId/share', protect, postController.sharePost);
+
 // Create post
 router.post('/posts', protect, postController.createPost);
 

@@ -17,13 +17,14 @@ const catchAsync = require('../utils/catchAsync');
  * }
  */
 exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
-  const { mediaType, mimeType, fileSizeMB } = req.body;
+  const { mediaType, mimeType, fileSizeMB, context } = req.body;
   const userId = req.user.id;
 
   console.log('📥 Presign request:', {
     mediaType,
     mimeType,
     fileSizeMB,
+    context,
     userId,
   });
 
@@ -69,11 +70,12 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
   const randomId = Math.random().toString(36).slice(2);
   const extension = mimeType.split('/')[1] || 'bin';
 
-  // ✅ MATCHES YOUR FEED + POST STRUCTURE
+  // ✅ MATCHES YOUR FEED + POST STRUCTURE (chat attachments get their own prefix)
+  const folder = context === 'chat' ? 'chats' : 'posts';
   const key =
     mediaType === 'image'
-      ? `users/${userId}/posts/images/${timestamp}-${randomId}.${extension}`
-      : `users/${userId}/posts/videos/${timestamp}-${randomId}.${extension}`;
+      ? `users/${userId}/${folder}/images/${timestamp}-${randomId}.${extension}`
+      : `users/${userId}/${folder}/videos/${timestamp}-${randomId}.${extension}`;
 
   console.log('🔑 Generated S3 key:', key);
 

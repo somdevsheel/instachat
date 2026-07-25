@@ -37,31 +37,38 @@ const PostSchema = new mongoose.Schema(
        MEDIA (S3 + CLOUDINARY/CDN)
     ============================== */
     media: {
-      type: {
-        type: String,
-        enum: ['image', 'video'],
-        required: true,
-      },
+      type: new mongoose.Schema(
+        {
+          type: {
+            type: String,
+            enum: ['image', 'video'],
+            required: true,
+          },
 
-      // Raw S3 key (private upload reference)
-      originalKey: {
-        type: String,
-        required: true,
-      },
+          // Raw S3 key (private upload reference)
+          originalKey: {
+            type: String,
+            required: true,
+          },
 
-      // Public CDN URLs
-      variants: {
-        original: {
-          type: String,
-          required: true,
+          // Public CDN URLs
+          variants: {
+            original: {
+              type: String,
+              required: true,
+            },
+
+            // Optional (future use)
+            thumbnail: {
+              type: String,
+              default: null,
+            },
+          },
         },
-
-        // Optional (future use)
-        thumbnail: {
-          type: String,
-          default: null,
-        },
-      },
+        { _id: false }
+      ),
+      required: false,
+      default: undefined,
     },
 
     /* ==============================

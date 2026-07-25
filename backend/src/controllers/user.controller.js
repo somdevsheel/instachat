@@ -2526,7 +2526,7 @@ exports.getUserProfile = async (req, res) => {
       username: req.params.username,
     })
       .select('-password')
-      .populate('followers', '_id')
+      .populate('followers', 'username profilePicture')
       .populate('following', '_id');
 
     if (!user) {
@@ -2556,6 +2556,14 @@ exports.getUserProfile = async (req, res) => {
     const canMessage = isFollowing || theyFollowMe;
     const status = await getUserStatus(user);
 
+    // Mutual = people I follow who also follow this profile.
+    const myFollowingSet = new Set(
+      currentUser.following.map(id => id.toString())
+    );
+    const mutualFollowers = user.followers.filter(
+      f => f._id.toString() !== req.user.id.toString() && myFollowingSet.has(f._id.toString())
+    );
+
     return res.status(200).json({
       success: true,
       data: {
@@ -2564,6 +2572,10 @@ exports.getUserProfile = async (req, res) => {
         name: user.name || '',
         profilePicture: user.profilePicture,
         bio: user.bio,
+        location: user.location || '',
+        website: user.website || '',
+        isVerified: user.isVerified || false,
+        createdAt: user.createdAt,
         postsCount: posts.length,
         followersCount: user.followers.length,
         followingCount: user.following.length,
@@ -2571,6 +2583,12 @@ exports.getUserProfile = async (req, res) => {
         canMessage,
         online: status.online,
         lastSeen: status.lastSeen,
+        mutualCount: mutualFollowers.length,
+        mutualPreview: mutualFollowers.slice(0, 6).map(f => ({
+          _id: f._id,
+          username: f.username,
+          profilePicture: f.profilePicture,
+        })),
         posts,
       },
     });
@@ -2588,12 +2606,14 @@ exports.getUserProfile = async (req, res) => {
 ================================ */
 exports.updateUserProfile = async (req, res) => {
   try {
-    const { username, bio, avatarKey } = req.body;
+    const { username, bio, location, website, avatarKey } = req.body;
 
     // Build update fields
     const updateFields = {};
     if (username) updateFields.username = username.trim();
     if (bio !== undefined) updateFields.bio = bio.trim();
+    if (location !== undefined) updateFields.location = location.trim();
+    if (website !== undefined) updateFields.website = website.trim();
     if (avatarKey) {
       updateFields.profilePicture = `${CDN_BASE_URL}/${avatarKey}`;
     }
@@ -2601,7 +2621,11 @@ exports.updateUserProfile = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: updateFields },
-      { new: true, select: '_id username email profilePicture bio followers following' }
+      {
+        new: true,
+        select:
+          '_id username email profilePicture bio location website isVerified createdAt followers following',
+      }
     );
 
     if (!user) {
@@ -2619,6 +2643,10 @@ exports.updateUserProfile = async (req, res) => {
         email: user.email,
         profilePicture: user.profilePicture,
         bio: user.bio,
+        location: user.location || '',
+        website: user.website || '',
+        isVerified: user.isVerified || false,
+        createdAt: user.createdAt,
         followersCount: user.followers.length,
         followingCount: user.following.length,
       },
@@ -3309,6 +3337,81 @@ exports.followUser = async (req, res) => {
 };
 
 /* ================================
+   💜 CLOSE FRIENDS
+================================ */
+exports.getCloseFriendsCandidates = async (req, res) => {
+  try {
+    const me = await User.findById(req.user.id)
+      .populate('following', 'username name profilePicture')
+      .select('following closeFriends');
+
+    if (!me) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    const closeFriendsSet = new Set(
+      me.closeFriends.map((id) => id.toString())
+    );
+
+    const data = me.following.map((u) => ({
+      _id: u._id,
+      username: u.username,
+      name: u.name,
+      profilePicture: u.profilePicture,
+      isCloseFriend: closeFriendsSet.has(u._id.toString()),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.error('Get close friends candidates error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to load close friends',
+    });
+  }
+};
+
+exports.toggleCloseFriend = async (req, res) => {
+  try {
+    const myId = req.user.id;
+    const targetId = req.params.id;
+
+    if (myId === targetId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot add yourself as a close friend',
+      });
+    }
+
+    const me = await User.findById(myId).select('closeFriends');
+    const isCloseFriend = me.closeFriends.some(
+      (id) => id.toString() === targetId
+    );
+
+    await User.findByIdAndUpdate(myId, {
+      [isCloseFriend ? '$pull' : '$addToSet']: { closeFriends: targetId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      isCloseFriend: !isCloseFriend,
+    });
+  } catch (err) {
+    console.error('Toggle close friend error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update close friends',
+    });
+  }
+};
+
+/* ================================
    👥 FOLLOWERS / FOLLOWING LIST
 ================================ */
 exports.getFollowList = async (req, res) => {
@@ -3370,17 +3473,24 @@ exports.getFollowList = async (req, res) => {
 ================================ */
 exports.getSuggestedUsers = async (req, res) => {
   try {
-    const me = await User.findById(req.user.id);
+    const me = await User.findById(req.user.id).select('following');
+    const myFollowingSet = new Set(me.following.map((id) => id.toString()));
 
     const users = await User.find({
       _id: { $nin: [req.user.id, ...me.following] },
     })
-      .select('username profilePicture lastSeen')
+      .select('username profilePicture lastSeen followers')
       .limit(20);
 
     const usersWithStatus = await Promise.all(
       users.map(async (u) => {
         const status = await getUserStatus(u);
+
+        // Mutual = people I follow who also follow this candidate.
+        const mutualCount = (u.followers || []).filter((f) =>
+          myFollowingSet.has(f.toString())
+        ).length;
+
         return {
           _id: u._id,
           username: u.username,
@@ -3388,9 +3498,13 @@ exports.getSuggestedUsers = async (req, res) => {
           isFollowing: false,
           online: status.online,
           lastSeen: status.lastSeen,
+          mutualCount,
         };
       })
     );
+
+    // Surface the most relevant (highest mutual overlap) suggestions first.
+    usersWithStatus.sort((a, b) => b.mutualCount - a.mutualCount);
 
     return res.status(200).json({
       success: true,

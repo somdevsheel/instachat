@@ -598,8 +598,22 @@ const userSchema = mongoose.Schema(
       default: "",
     },
 
+    location: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    website: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    closeFriends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
 
     lastSeen: {
       type: Date,

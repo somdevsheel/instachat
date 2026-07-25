@@ -68,6 +68,7 @@ const mediaRoutes = require('./v1/media.routes');
 const storyRoutes = require('./v1/story.routes');
 const reelRoutes = require('./v1/reel.routes');
 const notificationRoutes = require('./v1/notification.routes');
+const noteRoutes = require('./v1/note.routes');
 
 /**
  * ======================================================
@@ -76,6 +77,15 @@ const notificationRoutes = require('./v1/notification.routes');
  */
 const adminRoutes = require('./admin.routes');
 const reportRoutes = require('./report.routes');
+
+/**
+ * ======================================================
+ * COMMUNITY (GROUPS / EVENTS / MARKETPLACE)
+ * ======================================================
+ */
+const groupRoutes = require('./v1/group.routes');
+const eventRoutes = require('./v1/event.routes');
+const marketplaceRoutes = require('./v1/marketplace.routes');
 
 console.log('✅ All route files loaded');
 
@@ -90,6 +100,10 @@ router.use('/media', mediaRoutes);
 router.use('/stories', storyRoutes);
 router.use('/reels', reelRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/notes', noteRoutes);
+router.use('/groups', groupRoutes);
+router.use('/events', eventRoutes);
+router.use('/marketplace', marketplaceRoutes);
 
 /* =========================
    ADMIN & REPORTS

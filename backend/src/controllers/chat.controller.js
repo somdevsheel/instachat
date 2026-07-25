@@ -364,9 +364,14 @@ const Message = require('../models/message.model');
 const User = require('../models/user.model');
 const Post = require('../models/Post');
 const Reel = require('../models/Reel');
+const Note = require('../models/Note');
 const { getIO } = require('../services/socket.service');
 const { getUserStatus } = require('../utils/userStatus.util');
 const pushService = require('../services/push.service');
+
+const CDN_BASE_URL =
+  process.env.CDN_BASE_URL ||
+  `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
 
 /**
  * ======================================================
@@ -473,13 +478,22 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
  * ======================================================
  */
 exports.sendMessage = catchAsync(async (req, res) => {
-  const { chatId, receiverId, text, storyId, sharedPostId, sharedReelId } = req.body;
+  const { chatId, receiverId, text, storyId, sharedPostId, sharedReelId, attachment } = req.body;
   const senderId = req.user.id;
 
-  if (!chatId || !receiverId || typeof text !== 'string') {
+  const trimmedText = typeof text === 'string' ? text.trim() : '';
+
+  if (!chatId || !receiverId) {
     return res.status(400).json({
       success: false,
-      message: 'chatId, receiverId and text are required',
+      message: 'chatId and receiverId are required',
+    });
+  }
+
+  if (!trimmedText && !attachment && !sharedPostId && !sharedReelId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Message needs text, an attachment, or shared content',
     });
   }
 
@@ -488,6 +502,31 @@ exports.sendMessage = catchAsync(async (req, res) => {
       success: false,
       message: 'A message cannot share both a post and a reel',
     });
+  }
+
+  let attachmentDoc = null;
+  if (attachment) {
+    if (!attachment.type || !attachment.originalKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Attachment requires type and originalKey',
+      });
+    }
+
+    if (!['image', 'video'].includes(attachment.type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Attachment type must be image or video',
+      });
+    }
+
+    attachmentDoc = {
+      type: attachment.type,
+      originalKey: attachment.originalKey,
+      variants: {
+        original: `${CDN_BASE_URL}/${attachment.originalKey}`,
+      },
+    };
   }
 
   const chat = await Chat.findById(chatId).populate(
@@ -526,16 +565,19 @@ exports.sendMessage = catchAsync(async (req, res) => {
       return res.status(404).json({ success: false, message: 'Shared reel not found' });
     }
     type = 'shared_reel';
+  } else if (attachmentDoc) {
+    type = attachmentDoc.type;
   }
 
   let message = await Message.create({
     chat: chatId,
     sender: senderId,
     receiver: receiverId,
-    text,
+    text: trimmedText,
     story: storyId || null,
     sharedPost: sharedPostId || null,
     sharedReel: sharedReelId || null,
+    attachment: attachmentDoc || undefined,
     encryptionMode: 'plain',
     type,
     readBy: [{ user: senderId }],
@@ -575,6 +617,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     story: message.story,
     sharedPost: message.sharedPost,
     sharedReel: message.sharedReel,
+    attachment: message.attachment,
     type: message.type,
     createdAt: message.createdAt,
   });
@@ -594,7 +637,11 @@ exports.sendMessage = catchAsync(async (req, res) => {
       ? 'Shared a post with you'
       : type === 'shared_reel'
       ? 'Shared a reel with you'
-      : text;
+      : type === 'image'
+      ? trimmedText || 'Sent a photo'
+      : type === 'video'
+      ? trimmedText || 'Sent a video'
+      : trimmedText;
 
   pushService
     .sendPushToUsers(receiverId, {
@@ -841,16 +888,46 @@ exports.getRecentChats = catchAsync(async (req, res) => {
     })
     .sort({ updatedAt: -1 });
 
+  // Active "notes" (short-lived status text) for everyone across these
+  // chats, fetched once up front instead of per participant.
+  const allParticipantIds = [
+    ...new Set(
+      chats.flatMap((chat) => chat.participants.map((p) => p._id.toString()))
+    ),
+  ];
+  const activeNotes = await Note.find({
+    user: { $in: allParticipantIds },
+    expiresAt: { $gt: new Date() },
+  }).select('user text');
+  const noteByUser = new Map(
+    activeNotes.map((n) => [n.user.toString(), n.text])
+  );
+
   const chatsWithStatus = await Promise.all(
     chats.map(async (chat) => {
-      const participantsWithStatus = await Promise.all(
-        chat.participants.map(async (user) => {
-          const status = await getUserStatus(user);
-          return { ...user.toObject(), ...status };
-        })
-      );
+      const [participantsWithStatus, unreadCount] = await Promise.all([
+        Promise.all(
+          chat.participants.map(async (user) => {
+            const status = await getUserStatus(user);
+            return {
+              ...user.toObject(),
+              ...status,
+              note: noteByUser.get(user._id.toString()) || null,
+            };
+          })
+        ),
+        Message.countDocuments({
+          chat: chat._id,
+          sender: { $ne: userId },
+          'readBy.user': { $ne: userId },
+        }),
+      ]);
 
-      return { ...chat.toObject(), participants: participantsWithStatus };
+      return {
+        ...chat.toObject(),
+        participants: participantsWithStatus,
+        unreadCount,
+      };
     })
   );
 

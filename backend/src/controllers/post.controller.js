@@ -1,6 +1,9 @@
 const postService = require('../services/post.service');
 const notificationService = require('../services/notification.service');
 const catchAsync = require('../utils/catchAsync');
+const extractHashtags = require('../utils/extractHashtags');
+const User = require('../models/user.model');
+const Post = require('../models/Post');
 
 /**
  * ======================================================
@@ -19,35 +22,49 @@ const CDN_BASE_URL =
  * ======================================================
  */
 exports.createPost = catchAsync(async (req, res) => {
-  const { caption, media } = req.body;
+  const { caption, media, location } = req.body;
   const userId = req.user.id;
 
-  if (!media || !media.type || !media.originalKey) {
+  const trimmedCaption = caption?.trim() || '';
+
+  if (!media && !trimmedCaption) {
     return res.status(400).json({
       success: false,
-      message: 'Media is required with type and originalKey',
+      message: 'Post needs either media or text',
     });
   }
 
-  if (!['image', 'video'].includes(media.type)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Media type must be image or video',
-    });
-  }
+  let mediaWithUrls;
+  if (media) {
+    if (!media.type || !media.originalKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Media is required with type and originalKey',
+      });
+    }
 
-  const mediaWithUrls = {
-    type: media.type,
-    originalKey: media.originalKey,
-    variants: {
-      original: `${CDN_BASE_URL}/${media.originalKey}`,
-    },
-  };
+    if (!['image', 'video'].includes(media.type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Media type must be image or video',
+      });
+    }
+
+    mediaWithUrls = {
+      type: media.type,
+      originalKey: media.originalKey,
+      variants: {
+        original: `${CDN_BASE_URL}/${media.originalKey}`,
+      },
+    };
+  }
 
   const post = await postService.createPost({
     user: userId,
-    caption: caption?.trim() || '',
+    caption: trimmedCaption,
     media: mediaWithUrls,
+    location: location?.trim() || '',
+    hashtags: extractHashtags(trimmedCaption),
   });
 
   await post.populate('user', 'username profilePicture');
@@ -74,7 +91,11 @@ exports.getFeed = catchAsync(async (req, res) => {
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
 
-  const posts = await postService.queryPosts(limit, page, currentUserId);
+  const filter = ['following', 'close_friends'].includes(req.query.filter)
+    ? req.query.filter
+    : 'for_you';
+
+  const posts = await postService.queryPosts(limit, page, currentUserId, filter);
 
   res.status(200).json({
     success: true,
@@ -278,5 +299,97 @@ exports.deletePost = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Post deleted successfully',
+  });
+});
+
+/**
+ * ======================================================
+ * TRENDING HASHTAGS
+ * GET /api/v1/feed/trending
+ * ======================================================
+ */
+exports.getTrending = catchAsync(async (req, res) => {
+  const tags = await postService.getTrendingHashtags();
+
+  res.status(200).json({
+    success: true,
+    data: tags,
+  });
+});
+
+/**
+ * ======================================================
+ * TOGGLE SAVE POST
+ * PUT /api/v1/feed/posts/:postId/save
+ * ======================================================
+ */
+exports.toggleSavePost = catchAsync(async (req, res) => {
+  const { postId } = req.params;
+  const userId = req.user.id;
+
+  const post = await Post.exists({ _id: postId });
+  if (!post) {
+    return res.status(404).json({ success: false, message: 'Post not found' });
+  }
+
+  const user = await User.findById(userId).select('savedPosts');
+  const alreadySaved = user.savedPosts.some((id) => id.toString() === postId);
+
+  if (alreadySaved) {
+    user.savedPosts.pull(postId);
+  } else {
+    user.savedPosts.push(postId);
+  }
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    data: { saved: !alreadySaved },
+  });
+});
+
+/**
+ * ======================================================
+ * INCREMENT SHARE COUNT
+ * PUT /api/v1/feed/posts/:postId/share
+ * ======================================================
+ */
+exports.sharePost = catchAsync(async (req, res) => {
+  const { postId } = req.params;
+
+  const post = await Post.findByIdAndUpdate(
+    postId,
+    { $inc: { shareCount: 1 } },
+    { new: true }
+  ).select('shareCount');
+
+  if (!post) {
+    return res.status(404).json({ success: false, message: 'Post not found' });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { shareCount: post.shareCount },
+  });
+});
+
+/**
+ * ======================================================
+ * GET SAVED POSTS
+ * GET /api/v1/feed/saved
+ * ======================================================
+ */
+exports.getSavedPosts = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user.id).select('savedPosts');
+
+  const posts = await Post.find({ _id: { $in: user.savedPosts } })
+    .populate('user', 'username name profilePicture')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    results: posts.length,
+    data: posts,
   });
 });

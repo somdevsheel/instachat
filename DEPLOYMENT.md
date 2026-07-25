@@ -102,58 +102,133 @@ Create an IAM user (or better, an instance role attached to the Lightsail instan
 
 ## 4. Lightsail instance (Node backend)
 
-1. Create a Lightsail instance — Node.js blueprint or plain Ubuntu (Ubuntu gives you more control over the Node version via nvm; recommended).
-2. Open the networking tab: allow inbound `80`, `443`, and `22` only. The app's `PORT` (default from `.env`) stays internal behind Nginx — don't expose it directly.
-3. Install Node (match your dev version — `node -v` locally, install via nvm), then:
-   ```bash
-   git clone <your-repo> && cd instachat/backend
-   npm ci --omit=dev
-   ```
-4. Create `backend/.env` on the instance with production values. Required (matches what `db.js`, `redis.js`, `aws.js`, `sendEmail.js`, and `auth.controller.js` actually read — don't bother with unused legacy keys like `DATABASE_URL`/`DB_HOST`/`STRIPE_*` unless you wire them up):
-   ```
-   PORT=5000
-   NODE_ENV=production
-   MONGO_URI=<Atlas connection string>
-   JWT_SECRET=<long random value>
-   JWT_EXPIRES_IN=7d
-   REDIS_HOST=127.0.0.1
-   REDIS_PORT=6379
-   AWS_ACCESS_KEY_ID=<from step 1>
-   AWS_SECRET_ACCESS_KEY=<from step 1>
-   AWS_REGION=<bucket region>
-   AWS_BUCKET_NAME=instachat-media-prod
-   CDN_BASE_URL=https://cdn.yourdomain.com
-   SMTP_HOST=...
-   SMTP_PORT=...
-   SMTP_EMAIL=...
-   SMTP_PASSWORD=...
-   LOG_LEVEL=info
-   ```
-5. **Redis**: `backend/src/config/redis.js` is manually toggled between a local block and a production block via commenting — switch to the production block before deploying (it defaults to `127.0.0.1`, i.e. install Redis directly on this same instance: `sudo apt install redis-server`, enable it, and leave it bound to localhost only — don't expose port 6379 externally).
-6. **MongoDB**: use Atlas rather than self-hosting on the same small instance — Lightsail's smallest tiers don't have the memory/IOPS headroom to run Mongo, Redis, and Node reliably together. Whitelist the Lightsail instance's static IP in Atlas's network access list.
-7. Process manager — nothing in this repo picks one for you (`package.json` only has `start`/`dev` scripts), so use PM2:
-   ```bash
-   npm i -g pm2
-   pm2 start server.js --name instachat-api
-   pm2 save
-   pm2 startup   # follow the printed systemd command so it survives reboot
-   ```
-8. Nginx as reverse proxy + TLS termination:
-   ```nginx
-   server {
-     server_name api.yourdomain.com;
-     location / {
-       proxy_pass http://127.0.0.1:5000;
-       proxy_http_version 1.1;
-       proxy_set_header Upgrade $http_upgrade;   # required for Socket.io
-       proxy_set_header Connection "upgrade";
-       proxy_set_header Host $host;
-       proxy_set_header X-Real-IP $remote_addr;
-     }
-   }
-   ```
-   Then `sudo certbot --nginx -d api.yourdomain.com` for a free TLS cert.
-9. Verify: `curl https://api.yourdomain.com/api/v1/health` should return `{"success":true,...}`.
+### 4.1 Create the instance
+
+Lightsail console → Create instance → **Linux/Unix → OS Only → Ubuntu 22.04 LTS** (plain Ubuntu, not the Node.js blueprint — the blueprint's bundled Node version is out of your control and typically stale; installing via NodeSource below is more predictable). Pick a plan with at least 2GB RAM — Node + Redis + Nginx together are tight on the 1GB tier.
+
+Networking tab → firewall rules: allow inbound `22` (SSH), `80` (HTTP), `443` (HTTPS) only. Do **not** open `5000` (or whatever `PORT` you use) or `6379` (Redis) — both stay internal, reached only via Nginx/localhost.
+
+Attach a static IP (Lightsail → Networking → Create static IP) so it survives instance stop/start, and point `api.yourdomain.com`'s DNS A record at it.
+
+### 4.2 One-time server setup
+
+SSH in (`ssh ubuntu@<static-ip>`) and run this end-to-end — system packages, Node 20 LTS, Redis, Nginx, Certbot, PM2:
+
+```bash
+# System update
+sudo apt update && sudo apt upgrade -y
+
+# Node.js 20 LTS via NodeSource (apt-based, not nvm — plays cleanly with
+# systemd/pm2 startup, which nvm's per-user PATH setup often fights with)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs git build-essential
+
+node -v   # sanity check: v20.x
+npm -v
+
+# Redis (self-hosted on this same instance, matches redis.js's
+# 127.0.0.1 default in its PRODUCTION block)
+sudo apt install -y redis-server
+sudo sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
+sudo systemctl enable --now redis-server
+redis-cli ping   # should print PONG
+
+# Nginx (reverse proxy + TLS termination)
+sudo apt install -y nginx
+sudo systemctl enable --now nginx
+
+# Certbot (free TLS via Let's Encrypt)
+sudo apt install -y certbot python3-certbot-nginx
+
+# PM2 (process manager — this repo's package.json only has start/dev
+# scripts, nothing that daemonizes or restarts on crash)
+sudo npm install -g pm2
+```
+
+### 4.3 Deploy the app
+
+```bash
+cd ~
+git clone https://github.com/somdevsheel/instachat.git
+cd instachat/backend
+
+npm ci --omit=dev
+```
+
+Create `backend/.env` (`nano .env`) with production values. Required — matches what `db.js`, `redis.js`, `aws.js`, `sendEmail.js`, and `auth.controller.js` actually read; skip unused legacy keys like `DATABASE_URL`/`DB_HOST`/`STRIPE_*` unless you wire them up:
+
+```
+PORT=5000
+NODE_ENV=production
+MONGO_URI=<Atlas connection string>
+JWT_SECRET=<long random value>
+JWT_EXPIRES_IN=7d
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+AWS_ACCESS_KEY_ID=<from S3 IAM step>
+AWS_SECRET_ACCESS_KEY=<from S3 IAM step>
+AWS_REGION=<bucket region>
+AWS_BUCKET_NAME=instachat-media-prod
+CDN_BASE_URL=https://cdn.yourdomain.com
+SMTP_HOST=...
+SMTP_PORT=...
+SMTP_EMAIL=...
+SMTP_PASSWORD=...
+LOG_LEVEL=info
+```
+
+```bash
+chmod 600 .env
+```
+
+**MongoDB**: use Atlas rather than self-hosting on the same small instance — Lightsail's smaller tiers don't have the memory/IOPS headroom to run Mongo, Redis, and Node reliably together. Whitelist this instance's static IP in Atlas's network access list.
+
+**Redis config**: open `backend/src/config/redis.js` and confirm the production block (currently commented) is the active one before deploying — it's manually toggled by commenting/uncommenting, not env-driven.
+
+Start it under PM2:
+
+```bash
+pm2 start server.js --name instachat-api
+pm2 save
+pm2 startup systemd   # prints a sudo command — copy/paste and run it, then re-run: pm2 save
+```
+
+### 4.4 Nginx reverse proxy + TLS
+
+```bash
+sudo tee /etc/nginx/sites-available/instachat-api > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;   # required for Socket.io
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo ln -s /etc/nginx/sites-available/instachat-api /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# Issues the cert and rewrites the server block above to redirect 80 -> 443
+sudo certbot --nginx -d api.yourdomain.com
+```
+
+### 4.5 Verify
+
+```bash
+curl https://api.yourdomain.com/api/v1/health
+# expect: {"success":true,"message":"Server is healthy and running",...}
+
+pm2 logs instachat-api --lines 50   # tail logs if anything looks off
+```
 
 ### Make the first admin
 

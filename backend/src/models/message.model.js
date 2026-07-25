@@ -114,6 +114,36 @@ const messageSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ✅ ATTACHMENT SUPPORT (photo/video sent directly in a message)
+    attachment: {
+      type: new mongoose.Schema(
+        {
+          type: {
+            type: String,
+            enum: ['image', 'video'],
+            required: true,
+          },
+          originalKey: {
+            type: String,
+            required: true,
+          },
+          variants: {
+            original: {
+              type: String,
+              required: true,
+            },
+            thumbnail: {
+              type: String,
+              default: null,
+            },
+          },
+        },
+        { _id: false }
+      ),
+      required: false,
+      default: undefined,
+    },
+
     encryptionMode: {
       type: String,
       enum: ['plain', 'e2ee'],

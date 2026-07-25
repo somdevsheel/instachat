@@ -151,6 +151,13 @@ router.delete('/push-token', protect, userController.removePushToken);
 router.post('/follow/:id', protect, userController.followUser);
 
 /* ==============================
+   💜 CLOSE FRIENDS (must stay above the generic /:id/:type route below)
+============================== */
+
+router.get('/close-friends/manage', protect, userController.getCloseFriendsCandidates);
+router.put('/close-friends/:id', protect, userController.toggleCloseFriend);
+
+/* ==============================
    FOLLOWERS / FOLLOWING (LAST)
 ============================== */
 

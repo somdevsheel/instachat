@@ -1,4 +1,5 @@
 const Post = require('../models/Post');
+const User = require('../models/user.model');
 
 /**
  * ======================================================
@@ -18,11 +19,23 @@ const createPost = async (postBody) => {
 const queryPosts = async (
   limit = 10,
   page = 1,
-  currentUserId = null
+  currentUserId = null,
+  filter = 'for_you'
 ) => {
   const skip = (page - 1) * limit;
 
-  const posts = await Post.find()
+  const me = currentUserId
+    ? await User.findById(currentUserId).select('savedPosts following closeFriends')
+    : null;
+
+  const query = {};
+  if (filter === 'following' && me) {
+    query.user = { $in: [...me.following, currentUserId] };
+  } else if (filter === 'close_friends' && me) {
+    query.user = { $in: [...me.closeFriends, currentUserId] };
+  }
+
+  const posts = await Post.find(query)
     .populate('user', 'username name profilePicture')
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -31,6 +44,8 @@ const queryPosts = async (
 
   if (!currentUserId) return posts;
 
+  const savedSet = new Set((me?.savedPosts || []).map((id) => id.toString()));
+
   return posts.map((post) => ({
     ...post,
     isLiked: Array.isArray(post.likes)
@@ -38,6 +53,7 @@ const queryPosts = async (
           (id) => id.toString() === currentUserId.toString()
         )
       : false,
+    isSaved: savedSet.has(post._id.toString()),
   }));
 };
 
@@ -166,6 +182,25 @@ const getComments = async (postId) => {
   return post?.comments || [];
 };
 
+/**
+ * ======================================================
+ * TRENDING HASHTAGS
+ * Counts hashtag usage across recent posts.
+ * ======================================================
+ */
+const getTrendingHashtags = async (limit = 5, sinceDays = 30) => {
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+
+  return Post.aggregate([
+    { $match: { createdAt: { $gte: since }, hashtags: { $exists: true, $ne: [] } } },
+    { $unwind: '$hashtags' },
+    { $group: { _id: '$hashtags', postsCount: { $sum: 1 } } },
+    { $sort: { postsCount: -1 } },
+    { $limit: limit },
+    { $project: { _id: 0, tag: '$_id', postsCount: 1 } },
+  ]);
+};
+
 module.exports = {
   createPost,
   queryPosts,
@@ -175,4 +210,5 @@ module.exports = {
   getUserPosts,
   addComment,
   getComments,
+  getTrendingHashtags,
 };
