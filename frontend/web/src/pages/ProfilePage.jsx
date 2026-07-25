@@ -5,6 +5,7 @@ import { userApi, reelsApi, getOrCreateChat } from '@instachat/shared';
 import Avatar from '../components/Avatar.jsx';
 import PostMedia from '../components/PostMedia.jsx';
 import EditProfileModal from '../components/EditProfileModal.jsx';
+import FollowListModal from '../components/FollowListModal.jsx';
 import {
   SettingsIcon,
   LinkIcon,
@@ -42,6 +43,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
+  const [followListType, setFollowListType] = useState(null);
   const [activeTab, setActiveTab] = useState('Posts');
   const [isFollowing, setIsFollowing] = useState(false);
   const [reels, setReels] = useState([]);
@@ -180,14 +182,22 @@ export default function ProfilePage() {
                 <strong>{profile.postsCount ?? profile.posts?.length ?? 0}</strong>
                 <span>Posts</span>
               </div>
-              <div className="profile-stat">
+              <button
+                type="button"
+                className="profile-stat profile-stat-btn"
+                onClick={() => setFollowListType('followers')}
+              >
                 <strong>{formatCount(profile.followersCount ?? 0)}</strong>
                 <span>Followers</span>
-              </div>
-              <div className="profile-stat">
+              </button>
+              <button
+                type="button"
+                className="profile-stat profile-stat-btn"
+                onClick={() => setFollowListType('following')}
+              >
                 <strong>{formatCount(profile.followingCount ?? 0)}</strong>
                 <span>Following</span>
-              </div>
+              </button>
             </div>
           </div>
         </div>
@@ -362,6 +372,15 @@ export default function ProfilePage() {
 
       {editing && (
         <EditProfileModal profile={profile} onClose={() => setEditing(false)} />
+      )}
+
+      {followListType && (
+        <FollowListModal
+          userId={profile._id}
+          type={followListType}
+          title={followListType === 'followers' ? 'Followers' : 'Following'}
+          onClose={() => setFollowListType(null)}
+        />
       )}
     </div>
   );
