@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { postsApi } from '@instachat/shared';
 import PostMedia from '../components/PostMedia.jsx';
+import PostDetailModal from '../components/PostDetailModal.jsx';
 
 export default function SavedPage() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewingPostId, setViewingPostId] = useState(null);
 
   useEffect(() => {
     postsApi
@@ -24,11 +26,20 @@ export default function SavedPage() {
 
       <div className="profile-grid">
         {posts.map((post) => (
-          <div key={post._id} className="profile-grid-item">
+          <button
+            key={post._id}
+            type="button"
+            className="profile-grid-item"
+            onClick={() => setViewingPostId(post._id)}
+          >
             <PostMedia media={post.media} caption={post.caption} />
-          </div>
+          </button>
         ))}
       </div>
+
+      {viewingPostId && (
+        <PostDetailModal postId={viewingPostId} onClose={() => setViewingPostId(null)} />
+      )}
     </div>
   );
 }

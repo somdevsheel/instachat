@@ -294,6 +294,26 @@ const chatSlice = createSlice({
         state.error = action.payload;
       })
 
+      // Delete Message — the backend only emits `message_deleted` to the
+      // OTHER participant, so without this the person who deletes never
+      // sees their own chat update until they reopen it.
+      .addCase(deleteMessage.fulfilled, (state, action) => {
+        const { messageId, mode } = action.payload;
+
+        if (mode === 'everyone') {
+          const msg = state.messages.find(m => m._id === messageId);
+          if (msg) {
+            msg.deletedForEveryone = true;
+            msg.deletedAt = new Date().toISOString();
+          }
+        } else if (mode === 'me') {
+          state.messages = state.messages.filter(m => m._id !== messageId);
+        }
+      })
+      .addCase(deleteMessage.rejected, (state, action) => {
+        state.error = action.payload;
+      })
+
       // ✅ Fetch Unread Count
       .addCase(fetchUnreadCount.fulfilled, (state, action) => {
         state.unreadCount = action.payload;

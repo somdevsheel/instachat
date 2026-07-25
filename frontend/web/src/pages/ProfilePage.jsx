@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar.jsx';
 import PostMedia from '../components/PostMedia.jsx';
 import EditProfileModal from '../components/EditProfileModal.jsx';
 import FollowListModal from '../components/FollowListModal.jsx';
+import PostDetailModal from '../components/PostDetailModal.jsx';
 import {
   SettingsIcon,
   LinkIcon,
@@ -44,6 +45,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
   const [followListType, setFollowListType] = useState(null);
+  const [viewingPostId, setViewingPostId] = useState(null);
   const [activeTab, setActiveTab] = useState('Posts');
   const [isFollowing, setIsFollowing] = useState(false);
   const [reels, setReels] = useState([]);
@@ -217,9 +219,14 @@ export default function ProfilePage() {
         {activeTab === 'Posts' && (
           <div className="profile-grid">
             {(profile.posts || []).map((post) => (
-              <div key={post._id} className="profile-grid-item">
+              <button
+                key={post._id}
+                type="button"
+                className="profile-grid-item"
+                onClick={() => setViewingPostId(post._id)}
+              >
                 <PostMedia media={post.media} />
-              </div>
+              </button>
             ))}
             {(profile.posts || []).length === 0 && (
               <div className="centered-message">No posts yet.</div>
@@ -338,7 +345,7 @@ export default function ProfilePage() {
                   key={post._id}
                   type="button"
                   className="profile-photo-thumb"
-                  onClick={() => setActiveTab('Posts')}
+                  onClick={() => setViewingPostId(post._id)}
                 >
                   <img
                     src={post.media?.variants?.thumbnail || post.media?.variants?.original}
@@ -381,6 +388,10 @@ export default function ProfilePage() {
           title={followListType === 'followers' ? 'Followers' : 'Following'}
           onClose={() => setFollowListType(null)}
         />
+      )}
+
+      {viewingPostId && (
+        <PostDetailModal postId={viewingPostId} onClose={() => setViewingPostId(null)} />
       )}
     </div>
   );

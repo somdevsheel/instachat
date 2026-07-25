@@ -7,6 +7,7 @@ import {
   sendMessage,
   addMessage,
   markChatRead,
+  messageDeleted,
   clearMessages,
   joinChatRoom,
   leaveChatRoom,
@@ -17,6 +18,7 @@ import {
 } from '@instachat/shared';
 import { SendIcon, ImageIcon, XIcon } from '../components/icons.jsx';
 import { uploadMediaFile } from '../utils/uploadMedia.js';
+import MessageMenu from '../components/MessageMenu.jsx';
 
 function MessageAttachment({ attachment, onOpen }) {
   if (!attachment) return null;
@@ -134,6 +136,14 @@ export default function ChatDetailPage() {
     const handleTyping = () => setOtherTyping(true);
     const handleStopTyping = () => setOtherTyping(false);
 
+    // Fired for the OTHER participant when I delete a message — the
+    // deleter's own view is updated locally by the deleteMessage thunk.
+    const handleDeleted = (data) => {
+      if (data.chatId === chatId) {
+        dispatch(messageDeleted(data));
+      }
+    };
+
     // initSocket() resolves once the real connection is ready — calling
     // getSocket() synchronously here would often return null (the socket
     // is still awaiting its token lookup right after login/page load),
@@ -148,6 +158,7 @@ export default function ChatDetailPage() {
       socket.on('messages_read', handleRead);
       socket.on('typing', handleTyping);
       socket.on('stop_typing', handleStopTyping);
+      socket.on('message_deleted', handleDeleted);
     });
 
     return () => {
@@ -157,6 +168,7 @@ export default function ChatDetailPage() {
       boundSocket?.off('messages_read', handleRead);
       boundSocket?.off('typing', handleTyping);
       boundSocket?.off('stop_typing', handleStopTyping);
+      boundSocket?.off('message_deleted', handleDeleted);
 
       clearTimeout(typingTimeoutRef.current);
       if (isTypingRef.current) {
@@ -288,21 +300,29 @@ export default function ChatDetailPage() {
                 (r) => r.user === receiverId || r.user?._id === receiverId
               );
 
+            const menu = !msg.deletedForEveryone && (
+              <MessageMenu message={msg} isMine={isMine} />
+            );
+
             return (
               <React.Fragment key={msg._id}>
-                <div className={`message-bubble ${isMine ? 'mine' : 'theirs'} ${msg.sharedPost || msg.sharedReel || msg.attachment ? 'shared' : ''}`}>
-                  {msg.deletedForEveryone ? (
-                    <em>Message deleted</em>
-                  ) : msg.sharedPost || msg.sharedReel ? (
-                    <SharedContentCard msg={msg} />
-                  ) : msg.attachment ? (
-                    <>
-                      <MessageAttachment attachment={msg.attachment} onOpen={setLightboxAttachment} />
-                      {msg.text && <div className="message-attachment-caption">{msg.text}</div>}
-                    </>
-                  ) : (
-                    msg.text
-                  )}
+                <div className={`message-row ${isMine ? 'mine' : 'theirs'}`}>
+                  {isMine && menu}
+                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'} ${msg.sharedPost || msg.sharedReel || msg.attachment ? 'shared' : ''}`}>
+                    {msg.deletedForEveryone ? (
+                      <em>Message deleted</em>
+                    ) : msg.sharedPost || msg.sharedReel ? (
+                      <SharedContentCard msg={msg} />
+                    ) : msg.attachment ? (
+                      <>
+                        <MessageAttachment attachment={msg.attachment} onOpen={setLightboxAttachment} />
+                        {msg.text && <div className="message-attachment-caption">{msg.text}</div>}
+                      </>
+                    ) : (
+                      msg.text
+                    )}
+                  </div>
+                  {!isMine && menu}
                 </div>
                 {isMine && i === lastMineIndex && (
                   <div className="message-status">{isRead ? 'Seen' : 'Delivered'}</div>

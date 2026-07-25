@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { postsApi } from '@instachat/shared';
 import PostMedia from '../components/PostMedia.jsx';
+import PostDetailModal from '../components/PostDetailModal.jsx';
 
 export default function ExplorePage() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewingPostId, setViewingPostId] = useState(null);
 
   useEffect(() => {
     postsApi
@@ -25,15 +26,20 @@ export default function ExplorePage() {
 
       <div className="profile-grid">
         {posts.map((post) => (
-          <Link
+          <button
             key={post._id}
-            to={`/profile/${post.user?.username}`}
+            type="button"
             className="profile-grid-item"
+            onClick={() => setViewingPostId(post._id)}
           >
             <PostMedia media={post.media} caption={post.caption} />
-          </Link>
+          </button>
         ))}
       </div>
+
+      {viewingPostId && (
+        <PostDetailModal postId={viewingPostId} onClose={() => setViewingPostId(null)} />
+      )}
     </div>
   );
 }
