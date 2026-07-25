@@ -2725,7 +2725,7 @@ exports.updatePassword = async (req, res) => {
 exports.getAccountInfo = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      'username email phone name gender dateOfBirth profilePicture'
+      'username email phone name gender dateOfBirth profilePicture twoFactorEnabled'
     );
 
     if (!user) {
@@ -2745,6 +2745,7 @@ exports.getAccountInfo = async (req, res) => {
         gender: user.gender || '',
         dateOfBirth: user.dateOfBirth || null,
         profilePicture: user.profilePicture || '',
+        twoFactorEnabled: user.twoFactorEnabled || false,
       },
     });
   } catch (err) {

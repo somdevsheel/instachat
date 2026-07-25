@@ -111,6 +111,9 @@ export default function TopBar({ onToggleSidebar }) {
                 <button onClick={() => { setMenuOpen(false); navigate('/profile'); }}>
                   Profile
                 </button>
+                <button onClick={() => { setMenuOpen(false); navigate('/settings'); }}>
+                  Settings
+                </button>
               </div>
             </>
           )}

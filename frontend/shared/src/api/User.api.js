@@ -320,6 +320,14 @@ export const getLoginActivity = async () => {
   return res.data;
 };
 
+export const updatePassword = async (currentPassword, newPassword) => {
+  const res = await api.patch('/users/update-password', {
+    currentPassword,
+    newPassword,
+  });
+  return res.data;
+};
+
 export const toggleTwoFactor = async () => {
   try {
     const res = await api.patch('/users/two-factor');

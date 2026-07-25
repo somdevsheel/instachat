@@ -133,8 +133,8 @@ export default function ProfilePage() {
           {isOwnProfile && (
             <button
               className="profile-banner-settings"
-              onClick={() => setEditing(true)}
-              aria-label="Edit profile"
+              onClick={() => navigate('/settings')}
+              aria-label="Settings"
             >
               <SettingsIcon />
             </button>

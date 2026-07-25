@@ -26,11 +26,23 @@ export default function SearchPage() {
     }
   };
 
+  // Live search as you type, debounced so we're not firing a request on
+  // every keystroke — only once typing pauses for a moment. Also covers
+  // the initial query passed in via navigation (e.g. from the top bar).
   useEffect(() => {
-    if (location.state?.query) runSearch(location.state.query.trim());
-  }, [location.state?.query]);
+    const trimmed = query.trim();
 
-  const handleSearch = async (e) => {
+    if (!trimmed) {
+      setResults([]);
+      setError('');
+      return;
+    }
+
+    const timeoutId = setTimeout(() => runSearch(trimmed), 350);
+    return () => clearTimeout(timeoutId);
+  }, [query]);
+
+  const handleSearch = (e) => {
     e.preventDefault();
     runSearch(query.trim());
   };

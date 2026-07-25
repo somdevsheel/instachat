@@ -25,6 +25,7 @@ import FriendsPage from './pages/FriendsPage.jsx';
 import GroupsPage from './pages/GroupsPage.jsx';
 import EventsPage from './pages/EventsPage.jsx';
 import MarketplacePage from './pages/MarketplacePage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useSelector((state) => state.auth);
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="messages/:chatId" element={<ChatDetailPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="profile/:username" element={<ProfilePage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
