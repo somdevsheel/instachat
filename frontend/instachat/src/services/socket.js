@@ -14,118 +14,148 @@ import Toast from 'react-native-toast-message';
 const SOCKET_URL = 'http://192.168.1.3:5000';
 
 let socket = null;
+// initSocket() is async (it awaits the stored token), so a caller that
+// invokes it while a previous call is still in flight would otherwise
+// race and spin up a second socket.io connection. Caching the in-flight
+// promise makes concurrent callers (e.g. app boot and a chat screen
+// mounting moments later) all resolve to the same socket.
+let connecting = null;
 
-export const initSocket = async () => {
-  if (socket) return socket;
+export const initSocket = () => {
+  if (socket) return Promise.resolve(socket);
+  if (connecting) return connecting;
 
-  const token = await Storage.getToken();
-  if (!token) {
-    console.warn('⚠️ Socket not initialized: No token');
-    return null;
-  }
-
-  socket = SocketIO.io(SOCKET_URL, {
-    auth: { token },
-    transports: ['polling', 'websocket'],
-    upgrade: true,
-    autoConnect: true,
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    timeout: 20000,
-  });
-
-  socket.on('connect', () => {
-    console.log('✅ Socket Connected:', socket.id);
-    socket.emit('connected');
-    
-    const state = store.getState();
-    const userId = state.auth.user?._id;
-    if (userId) {
-      socket.emit('user:online', userId);
-      console.log('👤 User registered for notifications:', userId);
+  connecting = (async () => {
+    const token = await Storage.getToken();
+    if (!token) {
+      console.warn('⚠️ Socket not initialized: No token');
+      connecting = null;
+      return null;
     }
-  });
 
-  socket.on('disconnect', (reason) => {
-    console.log('❌ Socket Disconnected:', reason);
-  });
-
-  socket.on('connect_error', (err) => {
-    console.error('❌ Socket Connection Error:', err.message);
-  });
-
-  socket.on('message_received', (message) => {
-    console.log('📩 Message received:', message);
-    // The unread count will be updated via unread_count_updated event
-  });
-
-  socket.on('typing', (username) => {
-    console.log(`✏️ ${username} is typing...`);
-  });
-
-  socket.on('stop_typing', () => {
-    console.log('✋ Typing stopped');
-  });
-
-  socket.on('notification:new', (notification) => {
-    console.log('🔔 New notification received:', notification);
-    
-    store.dispatch(addNotification(notification));
-
-    Toast.show({
-      type: 'info',
-      text1: notification.sender?.username || 'New Notification',
-      text2: notification.message,
-      position: 'top',
-      visibilityTime: 3000,
-      topOffset: 50,
-      onPress: () => {
-        Toast.hide();
-      },
+    const s = SocketIO.io(SOCKET_URL, {
+      auth: { token },
+      transports: ['polling', 'websocket'],
+      upgrade: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
     });
-  });
 
-  // ✅ NEW: Listen for unread count updates
-  socket.on('unread_count_updated', (data) => {
-    console.log('📬 Unread count updated:', data.count);
-    store.dispatch(setUnreadCount(data.count));
-  });
+    s.on('connect', () => {
+      console.log('✅ Socket Connected:', s.id);
+      s.emit('connected');
 
-  return socket;
+      const state = store.getState();
+      const userId = state.auth.user?._id;
+      if (userId) {
+        s.emit('user:online', userId);
+        console.log('👤 User registered for notifications:', userId);
+      }
+    });
+
+    s.on('disconnect', (reason) => {
+      console.log('❌ Socket Disconnected:', reason);
+    });
+
+    s.on('connect_error', (err) => {
+      console.error('❌ Socket Connection Error:', err.message);
+    });
+
+    s.on('message_received', (message) => {
+      console.log('📩 Message received:', message);
+      // The unread count will be updated via unread_count_updated event
+    });
+
+    s.on('typing', (username) => {
+      console.log(`✏️ ${username} is typing...`);
+    });
+
+    s.on('stop_typing', () => {
+      console.log('✋ Typing stopped');
+    });
+
+    s.on('notification:new', (notification) => {
+      console.log('🔔 New notification received:', notification);
+
+      store.dispatch(addNotification(notification));
+
+      Toast.show({
+        type: 'info',
+        text1: notification.sender?.username || 'New Notification',
+        text2: notification.message,
+        position: 'top',
+        visibilityTime: 3000,
+        topOffset: 50,
+        onPress: () => {
+          Toast.hide();
+        },
+      });
+    });
+
+    // ✅ NEW: Listen for unread count updates
+    s.on('unread_count_updated', (data) => {
+      console.log('📬 Unread count updated:', data.count);
+      store.dispatch(setUnreadCount(data.count));
+    });
+
+    socket = s;
+    connecting = null;
+    return s;
+  })();
+
+  return connecting;
 };
 
-export const joinChatRoom = (chatId) => {
-  if (!socket || !chatId) return;
-  socket.emit('join_chat', chatId);
+// These fire-and-forget helpers used to read the module-level `socket`
+// variable directly, which is `null` until initSocket()'s async token
+// lookup resolves. A caller invoked in that window (e.g. a chat screen
+// mounting right after login) would silently no-op forever, since
+// nothing re-checks `socket` once it becomes available. Routing them
+// through initSocket() means they always wait for the real connection.
+export const joinChatRoom = async (chatId) => {
+  if (!chatId) return;
+  const s = await initSocket();
+  s?.emit('join_chat', chatId);
 };
 
-export const leaveChatRoom = (chatId) => {
-  if (!socket || !chatId) return;
-  socket.emit('leave_chat', chatId);
+export const leaveChatRoom = async (chatId) => {
+  if (!chatId) return;
+  const s = await initSocket();
+  s?.emit('leave_chat', chatId);
 };
 
-export const emitNewMessage = (message) => {
-  if (!socket || !message) return;
-  socket.emit('new_message', message);
+export const emitNewMessage = async (message) => {
+  if (!message) return;
+  const s = await initSocket();
+  s?.emit('new_message', message);
 };
 
-export const emitTyping = (chatId) => {
-  if (!socket || !chatId) return;
-  socket.emit('typing', chatId);
+export const emitTyping = async (chatId) => {
+  if (!chatId) return;
+  const s = await initSocket();
+  s?.emit('typing', chatId);
 };
 
-export const emitStopTyping = (chatId) => {
-  if (!socket || !chatId) return;
-  socket.emit('stop_typing', chatId);
+export const emitStopTyping = async (chatId) => {
+  if (!chatId) return;
+  const s = await initSocket();
+  s?.emit('stop_typing', chatId);
 };
 
+// Synchronous accessor — returns null until initSocket() has resolved at
+// least once. Safe for call sites that only run well after boot (e.g. in
+// response to a user action), but new code that needs the socket at
+// mount time should prefer `await initSocket()`.
 export const getSocket = () => socket;
 
 export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
-    console.log('🔌 Socket fully disconnected');
   }
+  connecting = null;
+  console.log('🔌 Socket fully disconnected');
 };

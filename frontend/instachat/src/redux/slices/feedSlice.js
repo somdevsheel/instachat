@@ -6,9 +6,9 @@ import { getFeed, likePost } from '../../api/Posts.api';
 ========================= */
 export const fetchFeed = createAsyncThunk(
   'feed/fetchFeed',
-  async (_, { rejectWithValue }) => {
+  async (filter, { rejectWithValue }) => {
     try {
-      const res = await getFeed();
+      const res = await getFeed(filter);
 
       // backend returns: { success, data }
       if (!res?.success) {

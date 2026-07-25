@@ -12,18 +12,32 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { useDispatch, useSelector } from 'react-redux';
+import * as ImagePicker from 'expo-image-picker';
 import {
   fetchMessages,
   sendMessage,
   addMessage,
   messageDeleted,
+  markChatRead,
 } from '../../redux/slices/chatSlice';
 import MessageBubble from '../../components/molecules/MessageBubble';
 import { Ionicons } from '@expo/vector-icons';
-import { getSocket } from '../../services/socket';
+import {
+  initSocket,
+  joinChatRoom,
+  leaveChatRoom,
+  emitTyping,
+  emitStopTyping,
+} from '../../services/socket';
+import { markChatRead as markChatReadApi } from '../../api/Chat.api';
 import api from '../../services/api';
+import colors from '../../theme/colors';
+import { uploadChatMedia } from '../../utils/uploadChatMedia';
 
 const ChatDetailScreen = ({ route, navigation }) => {
   const {
@@ -34,14 +48,18 @@ const ChatDetailScreen = ({ route, navigation }) => {
   } = route?.params || {};
 
   const dispatch = useDispatch();
-  const socket = getSocket();
 
   const flatListRef = useRef(null);
   const initializedRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
+  const isTypingRef = useRef(false);
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [lightboxAttachment, setLightboxAttachment] = useState(null);
 
   const { messages, loading } = useSelector(state => state.chat);
   const { user } = useSelector(state => state.auth);
@@ -67,37 +85,76 @@ const ChatDetailScreen = ({ route, navigation }) => {
 
     api.post(`/chats/${chatId}/read`).catch(() => {});
 
-    socket?.emit('join_chat', chatId);
+    joinChatRoom(chatId);
 
     return () => {
       initializedRef.current = false;
-      socket?.emit('leave_chat', chatId);
+      leaveChatRoom(chatId);
+
+      clearTimeout(typingTimeoutRef.current);
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        emitStopTyping(chatId);
+      }
     };
-  }, [chatId, dispatch, socket]);
+  }, [chatId, dispatch]);
+
+  /* =========================
+     MARK NEW MESSAGES AS READ
+     Runs whenever the message list changes — covers both opening the
+     chat and new messages arriving while it's already open. Without
+     this, the other participant's "seen" tick never updates once the
+     initial history has been marked read.
+  ========================= */
+  useEffect(() => {
+    if (chatId && messages.length > 0) {
+      markChatReadApi(chatId).catch(() => {});
+    }
+  }, [messages, chatId]);
 
   /* =========================
      SOCKET EVENTS
   ========================= */
   useEffect(() => {
-    if (!socket) return;
-
     const onMessage = msg => dispatch(addMessage(msg));
     const onDelete = payload => dispatch(messageDeleted(payload));
+
+    // Fired when the other participant reads what I've sent in this chat.
+    const onRead = (data) => {
+      if (data.chatId === chatId) {
+        dispatch(markChatRead({ readerId: data.readerId, myUserId: user?._id }));
+      }
+    };
+
     const onTyping = () => setTyping(true);
     const onStopTyping = () => setTyping(false);
 
-    socket.on('message_received', onMessage);
-    socket.on('message_deleted', onDelete);
-    socket.on('typing', onTyping);
-    socket.on('stop_typing', onStopTyping);
+    // initSocket() resolves once the real connection is ready — reading
+    // getSocket() synchronously here would often return null (the socket
+    // is still awaiting its token lookup right after login/app boot),
+    // silently skipping these listeners for the rest of this mount.
+    let cancelled = false;
+    let boundSocket = null;
+
+    initSocket().then((socket) => {
+      if (cancelled || !socket) return;
+      boundSocket = socket;
+      socket.on('message_received', onMessage);
+      socket.on('message_deleted', onDelete);
+      socket.on('messages_read', onRead);
+      socket.on('typing', onTyping);
+      socket.on('stop_typing', onStopTyping);
+    });
 
     return () => {
-      socket.off('message_received', onMessage);
-      socket.off('message_deleted', onDelete);
-      socket.off('typing', onTyping);
-      socket.off('stop_typing', onStopTyping);
+      cancelled = true;
+      boundSocket?.off('message_received', onMessage);
+      boundSocket?.off('message_deleted', onDelete);
+      boundSocket?.off('messages_read', onRead);
+      boundSocket?.off('typing', onTyping);
+      boundSocket?.off('stop_typing', onStopTyping);
     };
-  }, [socket, dispatch]);
+  }, [chatId, dispatch, user?._id]);
 
   /* =========================
      AUTO SCROLL
@@ -111,13 +168,79 @@ const ChatDetailScreen = ({ route, navigation }) => {
   }, [messages.length]);
 
   /* =========================
+     TYPING (EMIT)
+  ========================= */
+  const stopTypingNow = () => {
+    clearTimeout(typingTimeoutRef.current);
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      emitStopTyping(chatId);
+    }
+  };
+
+  const handleTextChange = (value) => {
+    setText(value);
+
+    if (!value.trim()) {
+      stopTypingNow();
+      return;
+    }
+
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      emitTyping(chatId);
+    }
+
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(stopTypingNow, 2000);
+  };
+
+  /* =========================
+     ATTACHMENT (PICK)
+  ========================= */
+  const handlePickAttachment = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your media');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    setPendingAttachment(result.assets[0]);
+  };
+
+  /* =========================
      SEND MESSAGE
   ========================= */
   const handleSend = async () => {
-    if (!text.trim() || sending) return;
+    if ((!text.trim() && !pendingAttachment) || sending || uploadingAttachment) return;
 
     const messageText = text.trim();
+    stopTypingNow();
+
+    let attachment;
+    if (pendingAttachment) {
+      setUploadingAttachment(true);
+      try {
+        const { key, mediaType } = await uploadChatMedia(pendingAttachment);
+        attachment = { type: mediaType, originalKey: key };
+      } catch {
+        setUploadingAttachment(false);
+        Alert.alert('Failed', 'Could not upload attachment');
+        return;
+      }
+      setUploadingAttachment(false);
+    }
+
     setText('');
+    setPendingAttachment(null);
     setSending(true);
 
     try {
@@ -126,9 +249,9 @@ const ChatDetailScreen = ({ route, navigation }) => {
           chatId,
           receiverId,
           text: messageText,
+          attachment,
         })
       );
-      socket?.emit('stop_typing', chatId);
     } catch {
       Alert.alert('Failed', 'Message not sent');
       setText(messageText);
@@ -165,7 +288,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
           {loading && messages.length === 0 ? (
             <ActivityIndicator
               style={{ flex: 1 }}
-              color="#fff"
+              color={colors.accent}
             />
           ) : (
             <FlatList
@@ -179,6 +302,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
                     (item.sender?._id || item.sender) ===
                     user._id
                   }
+                  onOpenAttachment={setLightboxAttachment}
                 />
               )}
               contentContainerStyle={{
@@ -195,25 +319,57 @@ const ChatDetailScreen = ({ route, navigation }) => {
           )}
         </View>
 
+        {/* ATTACHMENT PREVIEW */}
+        {pendingAttachment && (
+          <View style={styles.attachmentPreviewBar}>
+            <Image
+              source={{ uri: pendingAttachment.uri }}
+              style={styles.attachmentPreviewThumb}
+            />
+            {pendingAttachment.type === 'video' && (
+              <View style={styles.attachmentPreviewPlayBadge}>
+                <Ionicons name="play" size={12} color="#fff" />
+              </View>
+            )}
+            <Text style={styles.attachmentPreviewText} numberOfLines={1}>
+              {uploadingAttachment ? 'Uploading…' : 'Ready to send'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setPendingAttachment(null)}
+              disabled={uploadingAttachment}
+            >
+              <Ionicons name="close-circle" size={22} color={colors.textFaint} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* INPUT BAR */}
         <View style={styles.inputRow}>
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={handlePickAttachment}
+            disabled={sending || uploadingAttachment}
+          >
+            <Ionicons name="image-outline" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+
           <TextInput
             style={styles.input}
             placeholder="Message…"
-            placeholderTextColor="#888"
+            placeholderTextColor={colors.textFaint}
             value={text}
-            onChangeText={setText}
+            onChangeText={handleTextChange}
             multiline
             editable={!sending}
           />
 
-          {text.trim() && (
+          {(text.trim() || pendingAttachment) && (
             <TouchableOpacity
               onPress={handleSend}
-              disabled={sending}
+              disabled={sending || uploadingAttachment}
             >
-              {sending ? (
-                <ActivityIndicator color="#0095f6" />
+              {sending || uploadingAttachment ? (
+                <ActivityIndicator color={colors.accent} />
               ) : (
                 <Text style={styles.send}>Send</Text>
               )}
@@ -221,6 +377,44 @@ const ChatDetailScreen = ({ route, navigation }) => {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* ATTACHMENT LIGHTBOX */}
+      <Modal
+        visible={!!lightboxAttachment}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLightboxAttachment(null)}
+      >
+        <Pressable
+          style={styles.lightboxBackdrop}
+          onPress={() => setLightboxAttachment(null)}
+        >
+          <TouchableOpacity
+            style={styles.lightboxClose}
+            onPress={() => setLightboxAttachment(null)}
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          <Pressable onPress={() => {}}>
+            {lightboxAttachment?.type === 'video' ? (
+              <Video
+                source={{ uri: lightboxAttachment.variants?.original }}
+                style={styles.lightboxMedia}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls
+                shouldPlay
+              />
+            ) : (
+              <Image
+                source={{ uri: lightboxAttachment?.variants?.original }}
+                style={styles.lightboxMedia}
+                resizeMode="contain"
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -231,14 +425,14 @@ export default ChatDetailScreen;
    STYLES
 ========================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: colors.bg },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#262626',
+    borderBottomColor: colors.border,
   },
 
   avatar: {
@@ -246,18 +440,18 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     marginHorizontal: 10,
-    backgroundColor: '#262626',
+    backgroundColor: colors.surfaceRaised,
   },
 
   name: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
     flex: 1,
   },
 
   typing: {
-    color: '#888',
+    color: colors.accent,
     fontSize: 13,
     paddingHorizontal: 20,
     paddingBottom: 8,
@@ -269,26 +463,97 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     padding: 8,
     borderTopWidth: 0.5,
-    borderTopColor: '#262626',
-    backgroundColor: '#000',
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+
+  attachButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+    marginBottom: 4,
   },
 
   input: {
     flex: 1,
-    backgroundColor: '#262626',
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 22,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 16,
     maxHeight: 120,
   },
 
   send: {
-    color: '#0095f6',
+    color: colors.accent,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 12,
     marginBottom: 10,
+  },
+
+  attachmentPreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surfaceRaised,
+  },
+
+  attachmentPreviewThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+  },
+
+  attachmentPreviewPlayBadge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  attachmentPreviewText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+
+  lightboxBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  lightboxMedia: {
+    width: '100%',
+    height: '80%',
+  },
+
+  lightboxClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
   },
 });

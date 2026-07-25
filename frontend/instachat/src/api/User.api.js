@@ -252,6 +252,20 @@ export const getFollowList = async (userId, type) => {
 };
 
 /* ==============================
+   💜 CLOSE FRIENDS
+============================== */
+
+export const getCloseFriendsCandidates = async () => {
+  const res = await api.get('/users/close-friends/manage');
+  return res.data;
+};
+
+export const toggleCloseFriend = async (userId) => {
+  const res = await api.put(`/users/close-friends/${userId}`);
+  return res.data;
+};
+
+/* ==============================
    📋 ACCOUNT SETTINGS
 ============================== */
 

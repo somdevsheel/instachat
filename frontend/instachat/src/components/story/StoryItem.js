@@ -7,17 +7,21 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import colors, { gradients } from '../../theme/colors';
 
-const AVATAR_SIZE = 64;
-const IMAGE_SIZE = 58;
+const RING_SIZE = 66;
+const INNER_SIZE = 61;
+const IMAGE_SIZE = 57;
 const PLACEHOLDER =
   'https://via.placeholder.com/100';
 
+const TRANSPARENT = ['transparent', 'transparent'];
+
 /**
  * StoryItem
- * - Instagram-style rings
- * - unseen → pink ring
- * - seen → grey ring
+ * - unseen → gradient ring
+ * - seen → muted ring
  * - your story → plus badge if empty
  */
 const StoryItem = ({ item, onPress }) => {
@@ -43,6 +47,9 @@ const StoryItem = ({ item, onPress }) => {
     );
   }, [hasStory, isMe, stories]);
 
+  const ringColors = hasStory && !isSeen ? gradients.storyRing : TRANSPARENT;
+  const ringBg = !hasStory ? colors.surfaceRaised : isSeen ? colors.borderSoft : 'transparent';
+
   return (
     <TouchableOpacity
       style={styles.container}
@@ -50,17 +57,16 @@ const StoryItem = ({ item, onPress }) => {
       activeOpacity={0.8}
     >
       {/* AVATAR RING */}
-      <View
-        style={[
-          styles.avatarWrapper,
-          hasStory && !isSeen && styles.unseenRing,
-          hasStory && isSeen && styles.seenRing,
-        ]}
+      <LinearGradient
+        colors={ringColors}
+        style={[styles.ringOuter, { backgroundColor: ringBg }]}
       >
-        <Image
-          source={{ uri: avatarUri }}
-          style={styles.avatar}
-        />
+        <View style={styles.ringInner}>
+          <Image
+            source={{ uri: avatarUri }}
+            style={styles.avatar}
+          />
+        </View>
 
         {/* PLUS BADGE (Your story only) */}
         {isMe && !hasStory && (
@@ -72,7 +78,7 @@ const StoryItem = ({ item, onPress }) => {
             />
           </View>
         )}
-      </View>
+      </LinearGradient>
 
       {/* USERNAME */}
       <Text
@@ -97,24 +103,22 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
 
-  avatarWrapper: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    padding: 2,
+  ringOuter: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    padding: 2.5,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#222',
   },
 
-  unseenRing: {
-    borderWidth: 2,
-    borderColor: '#d62976', // Instagram pink
-  },
-
-  seenRing: {
-    borderWidth: 2,
-    borderColor: '#555', // muted grey
+  ringInner: {
+    width: INNER_SIZE,
+    height: INNER_SIZE,
+    borderRadius: INNER_SIZE / 2,
+    backgroundColor: colors.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   avatar: {
@@ -127,22 +131,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#0095F6',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#000',
+    borderColor: colors.bg,
   },
 
   name: {
-    color: '#fff',
-    fontSize: 12,
+    color: colors.textSecondary,
+    fontSize: 11,
     marginTop: 6,
     maxWidth: 72,
     textAlign: 'center',
   },
 });
-

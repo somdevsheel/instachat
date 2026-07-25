@@ -17,18 +17,21 @@ export const getPresignedUploadUrl = async ({
   mediaType,
   mimeType,
   fileSizeMB,
+  context,
 }) => {
   try {
     console.log('📡 Requesting presign:', {
       mediaType,
       mimeType,
       fileSizeMB,
+      context,
     });
 
     const res = await api.post('/media/presign', {
       mediaType,
       mimeType,
       fileSizeMB,
+      context,
     });
 
     /**

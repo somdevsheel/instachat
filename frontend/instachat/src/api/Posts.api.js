@@ -4,9 +4,11 @@ import { Alert } from 'react-native';
 /* ======================================================
    FEED
 ====================================================== */
-export const getFeed = async () => {
+export const getFeed = async (filter) => {
   try {
-    const res = await api.get('/feed');
+    const res = await api.get('/feed', {
+      params: filter && filter !== 'for_you' ? { filter } : {},
+    });
     if (!res?.data?.success) {
       throw new Error('Failed to fetch feed');
     }
@@ -131,6 +133,47 @@ export const deletePost = async (postId) => {
       err?.response?.data || err.message
     );
     Alert.alert('Error', 'Failed to delete post');
+    throw err;
+  }
+};
+
+/* ======================================================
+   TRENDING HASHTAGS
+====================================================== */
+export const getTrending = async () => {
+  try {
+    const res = await api.get('/feed/trending');
+    if (!res?.data?.success) {
+      throw new Error('Failed to fetch trending hashtags');
+    }
+    return res.data;
+  } catch (err) {
+    console.error(
+      '❌ getTrending error:',
+      err?.response?.data || err.message
+    );
+    throw err;
+  }
+};
+
+/* ======================================================
+   SAVE / UNSAVE POST
+====================================================== */
+export const savePost = async (postId) => {
+  try {
+    if (!postId) {
+      throw new Error('Post ID is required');
+    }
+    const res = await api.put(`/feed/posts/${postId}/save`);
+    if (!res?.data?.success) {
+      throw new Error('Save request failed');
+    }
+    return res.data;
+  } catch (err) {
+    console.error(
+      '❌ savePost error:',
+      err?.response?.data || err.message
+    );
     throw err;
   }
 };

@@ -111,7 +111,7 @@ const CreateStoryScreen = ({ navigation }) => {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       quality: 1,
       videoMaxDuration: 15,
     });

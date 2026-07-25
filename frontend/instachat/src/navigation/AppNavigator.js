@@ -22,6 +22,7 @@ import UserProfileScreen from '../screens/profile/UserProfileScreen';
 import FollowListScreen from '../screens/profile/FollowListScreen';
 import FollowersListScreen from '../screens/profile/FollowersListScreen';
 import FollowingListScreen from '../screens/profile/FollowingListScreen';
+import ManageCloseFriendsScreen from '../screens/profile/ManageCloseFriendsScreen';
 
 /* =========================
    CONTENT CREATION
@@ -30,6 +31,7 @@ import CreatePostScreen from '../screens/post/CreatePostScreen';
 import PostDetailScreen from '../screens/post/PostDetailScreen';
 import UploadScreen from '../screens/reels/UploadScreen';
 import CreateStoryScreen from '../screens/feed/CreateStoryScreen';
+import ReelsScreen from '../screens/reels/ReelsScreen';
 
 /* =========================
    STORY
@@ -124,6 +126,10 @@ export default function AppNavigator() {
               name={ROUTES.CREATE_STORY}
               component={CreateStoryScreen}
             />
+            <Stack.Screen
+              name={ROUTES.REELS}
+              component={ReelsScreen}
+            />
 
             {/* Comments */}
             <Stack.Screen
@@ -180,6 +186,10 @@ export default function AppNavigator() {
             <Stack.Screen
               name="FOLLOWING_LIST"
               component={FollowingListScreen}
+            />
+            <Stack.Screen
+              name={ROUTES.MANAGE_CLOSE_FRIENDS}
+              component={ManageCloseFriendsScreen}
             />
           </>
         ) : (

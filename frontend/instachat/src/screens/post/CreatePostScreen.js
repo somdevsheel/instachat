@@ -18,6 +18,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
 
 import { uploadQueue } from '../../utils/uploadQueue';
+import colors from '../../theme/colors';
 
 const MAX_VIDEO_MB = 100;
 
@@ -56,7 +57,7 @@ const CreatePostScreen = ({ navigation }) => {
 
       const result =
         await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.All,
+          mediaTypes: ['images', 'videos'],
           allowsEditing: false,
           quality: 1,
           videoMaxDuration: 180,
@@ -224,7 +225,7 @@ export default CreatePostScreen;
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.bg,
   },
 
   header: {
@@ -234,17 +235,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 0.5,
-    borderBottomColor: '#222',
+    borderBottomColor: colors.border,
   },
 
   headerTitle: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 17,
     fontWeight: '600',
   },
 
   shareText: {
-    color: '#1DA1F2',
+    color: colors.accent,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -255,7 +256,7 @@ const styles = StyleSheet.create({
 
   mediaBox: {
     height: 320,
-    backgroundColor: '#111',
+    backgroundColor: colors.surfaceRaised,
     justifyContent: 'center',
     alignItems: 'center',
   },

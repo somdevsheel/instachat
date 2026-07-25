@@ -61,12 +61,13 @@ export const fetchMessages = createAsyncThunk(
  */
 export const sendMessage = createAsyncThunk(
   'chat/sendMessage',
-  async ({ chatId, receiverId, text }, { rejectWithValue }) => {
+  async ({ chatId, receiverId, text, attachment }, { rejectWithValue }) => {
     try {
       const response = await api.post('/chats/message', {
         chatId,
         receiverId,
         text,
+        attachment,
         encryptionMode: 'plain',
       });
       return response.data.data;

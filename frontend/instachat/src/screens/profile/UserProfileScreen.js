@@ -13,11 +13,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../../services/api';
 import { ROUTES } from '../../navigation/routes.constants';
 import usePullToRefresh from '../../hooks/usePullToRefresh';
+import colors, { gradients } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 const IMAGE_SIZE = (width - 4) / 3;
@@ -79,14 +81,14 @@ const UserProfileScreen = ({ route, navigation }) => {
       // Optimistic update
       setIsFollowing(!wasFollowing);
       setFollowersCount(prev => wasFollowing ? prev - 1 : prev + 1);
-      
+
       // ✅ If now following, enable message button immediately
       if (!wasFollowing) {
         setCanMessage(true);
       }
 
       const res = await api.post(`/users/follow/${profileUser._id}`);
-      
+
       // Update with actual server response if available
       if (res.data.followersCount !== undefined) {
         setFollowersCount(res.data.followersCount);
@@ -156,7 +158,7 @@ const UserProfileScreen = ({ route, navigation }) => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0095F6" />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -169,7 +171,7 @@ const UserProfileScreen = ({ route, navigation }) => {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={28} color="white" />
+          <Ionicons name="arrow-back" size={26} color="white" />
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
@@ -181,7 +183,7 @@ const UserProfileScreen = ({ route, navigation }) => {
               <MaterialCommunityIcons
                 name="check-decagram"
                 size={16}
-                color="#0095F6"
+                color={colors.accent}
                 style={{ marginLeft: 4 }}
               />
             )}
@@ -189,7 +191,7 @@ const UserProfileScreen = ({ route, navigation }) => {
         </View>
 
         <TouchableOpacity>
-          <Ionicons name="ellipsis-vertical" size={24} color="white" />
+          <Ionicons name="ellipsis-vertical" size={22} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -200,24 +202,26 @@ const UserProfileScreen = ({ route, navigation }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#fff"
-            colors={['#0095F6']}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
         {/* PROFILE SECTION */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <View style={styles.storyRing}>
-              <Image
-                source={{
-                  uri:
-                    profileUser.profilePicture ||
-                    'https://via.placeholder.com/100',
-                }}
-                style={styles.avatar}
-              />
-            </View>
+            <LinearGradient colors={gradients.storyRing} style={styles.storyRing}>
+              <View style={styles.storyRingInner}>
+                <Image
+                  source={{
+                    uri:
+                      profileUser.profilePicture ||
+                      'https://via.placeholder.com/100',
+                  }}
+                  style={styles.avatar}
+                />
+              </View>
+            </LinearGradient>
           </View>
 
           {/* STATS */}
@@ -229,7 +233,7 @@ const UserProfileScreen = ({ route, navigation }) => {
               <Text style={styles.statLabel}>posts</Text>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.statItem}
               onPress={() => navigation.navigate(ROUTES.FOLLOW_LIST, {
                 userId: profileUser._id,
@@ -241,7 +245,7 @@ const UserProfileScreen = ({ route, navigation }) => {
               <Text style={styles.statLabel}>followers</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.statItem}
               onPress={() => navigation.navigate(ROUTES.FOLLOW_LIST, {
                 userId: profileUser._id,
@@ -302,7 +306,7 @@ const UserProfileScreen = ({ route, navigation }) => {
           )}
 
           <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="person-add-outline" size={16} color="#fff" />
+            <Ionicons name="person-add-outline" size={16} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -314,8 +318,8 @@ const UserProfileScreen = ({ route, navigation }) => {
           >
             <Ionicons
               name="grid-outline"
-              size={26}
-              color={activeTab === 'posts' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'posts' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
 
@@ -325,8 +329,8 @@ const UserProfileScreen = ({ route, navigation }) => {
           >
             <Ionicons
               name="videocam-outline"
-              size={26}
-              color={activeTab === 'reels' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'reels' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
 
@@ -336,8 +340,8 @@ const UserProfileScreen = ({ route, navigation }) => {
           >
             <Ionicons
               name="person-outline"
-              size={26}
-              color={activeTab === 'tagged' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'tagged' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
         </View>
@@ -354,7 +358,7 @@ const UserProfileScreen = ({ route, navigation }) => {
             />
           ) : (
             <View style={styles.emptyState}>
-              <Ionicons name="camera-outline" size={60} color="#262626" />
+              <Ionicons name="camera-outline" size={60} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>No posts yet</Text>
             </View>
           )}
@@ -370,16 +374,16 @@ export default UserProfileScreen;
    STYLES
 ========================= */
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#000',
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  
+
   /* HEADER */
   header: {
     flexDirection: 'row',
@@ -392,13 +396,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  headerTitle: { 
-    flexDirection: 'row', 
+  headerTitle: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  headerUsername: { 
-    color: '#fff', 
-    fontSize: 18, 
+  headerUsername: {
+    color: colors.textPrimary,
+    fontSize: 18,
     fontWeight: 'bold',
   },
 
@@ -413,46 +417,56 @@ const styles = StyleSheet.create({
     marginRight: 28,
   },
   storyRing: {
-    borderWidth: 2,
-    borderColor: '#262626',
-    borderRadius: 50,
-    padding: 2,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    padding: 2.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storyRingInner: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: colors.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatar: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
   },
   statsContainer: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
-  statItem: { 
+  statItem: {
     alignItems: 'center',
   },
-  statNumber: { 
-    color: '#fff', 
-    fontSize: 18, 
+  statNumber: {
+    color: colors.textPrimary,
+    fontSize: 18,
     fontWeight: '700',
   },
-  statLabel: { 
-    color: '#fff', 
+  statLabel: {
+    color: colors.textSecondary,
     fontSize: 13,
   },
 
   /* BIO */
-  bioSection: { 
+  bioSection: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  displayName: { 
-    color: '#fff', 
+  displayName: {
+    color: colors.textPrimary,
     fontWeight: '600',
     fontSize: 14,
   },
-  bioText: { 
-    color: '#fff',
+  bioText: {
+    color: colors.textPrimary,
     marginTop: 4,
     fontSize: 14,
   },
@@ -466,33 +480,33 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    height: 32,
-    borderRadius: 8,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   followBtn: {
-    backgroundColor: '#0095F6',
+    backgroundColor: colors.accent,
   },
   followingBtn: {
-    backgroundColor: '#262626',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: '#363636',
+    borderColor: colors.border,
   },
   messageBtn: {
-    backgroundColor: '#262626',
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: '#363636',
+    borderColor: colors.border,
   },
   iconButton: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#262626',
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#363636',
+    borderColor: colors.border,
   },
   actionBtnText: {
     color: '#fff',
@@ -500,14 +514,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   followingBtnText: {
-    color: '#fff',
+    color: colors.textPrimary,
   },
 
   /* TABS */
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 0.5,
-    borderTopColor: '#262626',
+    borderTopColor: colors.border,
     marginTop: 16,
   },
   tab: {
@@ -516,8 +530,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   activeTab: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#fff',
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
   },
 
   /* GRID */
@@ -527,7 +541,7 @@ const styles = StyleSheet.create({
   gridItem: {
     width: IMAGE_SIZE,
     height: IMAGE_SIZE,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.surfaceRaised,
   },
   gridItemMargin: {
     marginRight: 2,
@@ -550,7 +564,7 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyTitle: {
-    color: '#fff',
+    color: colors.textSecondary,
     marginTop: 12,
     fontSize: 22,
     fontWeight: '700',

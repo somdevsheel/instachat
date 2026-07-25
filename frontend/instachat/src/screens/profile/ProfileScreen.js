@@ -14,9 +14,11 @@ import {
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ROUTES } from '../../navigation/routes.constants';
 import { loadUser } from '../../redux/slices/authSlice';
 import usePullToRefresh from '../../hooks/usePullToRefresh';
+import colors, { gradients } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 const IMAGE_SIZE = (width - 4) / 3;
@@ -63,7 +65,7 @@ const ProfileScreen = ({ navigation }) => {
   if (!user) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -97,7 +99,7 @@ const ProfileScreen = ({ navigation }) => {
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.lockContainer}>
-          <Ionicons name="lock-closed" size={14} color="#fff" />
+          <Ionicons name="lock-closed" size={14} color={colors.textSecondary} />
         </View>
 
         <View style={styles.headerCenter}>
@@ -110,14 +112,14 @@ const ProfileScreen = ({ navigation }) => {
             style={styles.headerIcon}
             onPress={() => navigation.navigate(ROUTES.CREATE_POST)}
           >
-            <Ionicons name="add-outline" size={28} color="#fff" />
+            <Ionicons name="add-outline" size={26} color="#fff" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.headerIcon}
             onPress={() => navigation.navigate(ROUTES.PROFILE_SETTINGS)}
           >
-            <Ionicons name="menu-outline" size={28} color="#fff" />
+            <Ionicons name="menu-outline" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -128,19 +130,21 @@ const ProfileScreen = ({ navigation }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#fff"
+            tintColor={colors.accent}
           />
         }
       >
         {/* PROFILE SECTION */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <View style={styles.storyRing}>
-              <Image
-                source={{ uri: profileImageUri }}
-                style={styles.avatar}
-              />
-            </View>
+            <LinearGradient colors={gradients.storyRing} style={styles.storyRing}>
+              <View style={styles.storyRingInner}>
+                <Image
+                  source={{ uri: profileImageUri }}
+                  style={styles.avatar}
+                />
+              </View>
+            </LinearGradient>
 
             <TouchableOpacity
               style={styles.avatarBadge}
@@ -213,7 +217,7 @@ const ProfileScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="person-add-outline" size={16} color="#fff" />
+            <Ionicons name="person-add-outline" size={16} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -225,8 +229,8 @@ const ProfileScreen = ({ navigation }) => {
           >
             <Ionicons
               name="grid-outline"
-              size={26}
-              color={activeTab === 'posts' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'posts' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
 
@@ -236,8 +240,8 @@ const ProfileScreen = ({ navigation }) => {
           >
             <Ionicons
               name="videocam-outline"
-              size={26}
-              color={activeTab === 'reels' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'reels' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
 
@@ -247,8 +251,8 @@ const ProfileScreen = ({ navigation }) => {
           >
             <Ionicons
               name="person-outline"
-              size={26}
-              color={activeTab === 'tagged' ? '#fff' : '#8e8e8e'}
+              size={24}
+              color={activeTab === 'tagged' ? colors.accent : colors.textFaint}
             />
           </TouchableOpacity>
         </View>
@@ -273,7 +277,7 @@ const ProfileScreen = ({ navigation }) => {
             />
           ) : (
             <View style={styles.emptyState}>
-              <Ionicons name="camera-outline" size={60} color="#262626" />
+              <Ionicons name="camera-outline" size={60} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>No content yet</Text>
             </View>
           )}
@@ -287,64 +291,69 @@ export default ProfileScreen;
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
   lockContainer: { width: 28 },
-  headerCenter: { flexDirection: 'row', alignItems: 'center' },
-  headerUsername: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerUsername: { color: colors.textPrimary, fontSize: 20, fontWeight: '700' },
   headerRight: { flexDirection: 'row' },
   headerIcon: { marginLeft: 8 },
   profileSection: { flexDirection: 'row', padding: 16 },
   avatarContainer: { marginRight: 28 },
-  storyRing: { borderWidth: 2, borderColor: '#262626', borderRadius: 50, padding: 2 },
-  avatar: { width: 86, height: 86, borderRadius: 43 },
+  storyRing: { width: 90, height: 90, borderRadius: 45, padding: 2.5, justifyContent: 'center', alignItems: 'center' },
+  storyRingInner: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
+  avatar: { width: 78, height: 78, borderRadius: 39 },
   avatarBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#0095f6',
+    backgroundColor: colors.accent,
     width: 25,
     height: 25,
     borderRadius: 12.5,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#000',
+    borderColor: colors.bg,
   },
   statsRow: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
   statItem: { alignItems: 'center' },
-  statNumber: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  statLabel: { color: '#fff', fontSize: 13 },
+  statNumber: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
+  statLabel: { color: colors.textSecondary, fontSize: 13 },
   bioSection: { paddingHorizontal: 16 },
-  displayName: { color: '#fff', fontWeight: '600' },
-  bioText: { color: '#fff' },
+  displayName: { color: colors.textPrimary, fontWeight: '600' },
+  bioText: { color: colors.textPrimary },
   actionsRow: { flexDirection: 'row', padding: 16 },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
-    height: 32,
-    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    height: 34,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 6,
   },
-  primaryButtonText: { color: '#fff', fontWeight: '600' },
+  primaryButtonText: { color: colors.textPrimary, fontWeight: '600' },
   iconButton: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tabBar: { flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: '#262626' },
+  tabBar: { flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  activeTab: { borderBottomWidth: 1, borderBottomColor: '#fff' },
+  activeTab: { borderBottomWidth: 2, borderBottomColor: colors.accent },
   gridItem: { width: IMAGE_SIZE, height: IMAGE_SIZE },
   gridItemMargin: { marginRight: 2 },
   gridImage: { width: '100%', height: '100%' },
   videoIndicator: { position: 'absolute', top: 8, right: 8 },
   emptyState: { alignItems: 'center', padding: 60 },
-  emptyTitle: { color: '#fff', marginTop: 12 },
+  emptyTitle: { color: colors.textSecondary, marginTop: 12 },
 });
