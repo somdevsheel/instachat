@@ -17,6 +17,9 @@ const {
 // Redis
 const redis = require('./config/redis');
 
+// CORS policy
+const { corsOriginValidator } = require('./config/cors');
+
 const app = express();
 
 /* ✅ REQUIRED FOR NGINX / LOAD BALANCER */
@@ -69,8 +72,7 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: '*',
-    // methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: corsOriginValidator,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
@@ -79,9 +81,11 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
+// 'dev' format is colorized/terse for local reading; 'combined' is the
+// standard Apache-style format most log aggregators (CloudWatch, etc.)
+// expect. Previously logging was dev-only, so production ran with zero
+// request logs unless the hosting platform captured something else.
+app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
 /* ============================
    GLOBAL RATE LIMITING (REST)

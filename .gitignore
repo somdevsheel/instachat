@@ -38,6 +38,11 @@ Thumbs.db
 .vscode/
 .idea/
 
+# .env.example files ARE meant to be committed (templates with no real
+# secrets) — the .env.* rules above catch these too, so un-ignore them.
+!.env.example
+!**/.env.example
+
 
 
 
@@ -86,3 +91,8 @@ logs/
 Thumbs.db
 .vscode/
 .idea/
+
+# .env.example files ARE meant to be committed (templates with no real
+# secrets) — the .env.* rules above catch these too, so un-ignore them.
+!.env.example
+!**/.env.example

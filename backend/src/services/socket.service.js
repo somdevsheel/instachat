@@ -2,6 +2,7 @@ const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
 const redis = require('../config/redis');
+const { corsOriginValidator } = require('../config/cors');
 
 let io;
 
@@ -35,7 +36,7 @@ const initSocket = (server) => {
   io = socketIo(server, {
     pingTimeout: 60000,
     cors: {
-      origin: '*',
+      origin: corsOriginValidator,
       methods: ['GET', 'POST'],
     },
   });

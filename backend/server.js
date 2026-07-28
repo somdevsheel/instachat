@@ -7,6 +7,11 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 /* =========================
+   VALIDATE ENV (BEFORE ANYTHING ELSE TOUCHES IT)
+========================= */
+require('./src/config/validateEnv')();
+
+/* =========================
    CRASH SAFETY (SYNC)
 ========================= */
 process.on('uncaughtException', err => {

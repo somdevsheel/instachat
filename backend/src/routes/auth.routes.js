@@ -56,29 +56,30 @@ const {
 } = require("../controllers/auth.controller");
 
 const { protect } = require("../middlewares/auth.middleware");
+const { authLimiter } = require("../middlewares/rateLimiter");
 
 /* =========================
    REGISTER WITH OTP
 ========================= */
-router.post("/register/request-otp", requestRegisterOtp);
-router.post("/register/verify-otp", verifyRegisterOtp);
+router.post("/register/request-otp", authLimiter, requestRegisterOtp);
+router.post("/register/verify-otp", authLimiter, verifyRegisterOtp);
 
 /* =========================
    LOGIN
 ========================= */
-router.post("/login", login);
+router.post("/login", authLimiter, login);
 
 /* =========================
    TWO-FACTOR AUTH
 ========================= */
-router.post("/verify-2fa", verify2FA);
-router.post("/resend-2fa", resend2FA);
+router.post("/verify-2fa", authLimiter, verify2FA);
+router.post("/resend-2fa", authLimiter, resend2FA);
 
 /* =========================
    FORGOT PASSWORD (OTP)
 ========================= */
-router.post("/forgot-password/request-otp", requestForgotPasswordOtp);
-router.post("/forgot-password/verify-otp", verifyForgotPasswordOtp);
+router.post("/forgot-password/request-otp", authLimiter, requestForgotPasswordOtp);
+router.post("/forgot-password/verify-otp", authLimiter, verifyForgotPasswordOtp);
 
 /* =========================
    CURRENT USER
