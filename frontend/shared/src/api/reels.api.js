@@ -1105,6 +1105,64 @@ export const incrementReelView = async (reelId) => {
 };
 
 /* ======================================================
+   SAVE / UNSAVE REEL
+====================================================== */
+export const toggleSaveReel = async (reelId) => {
+  try {
+    if (!reelId) throw new Error('Reel ID is required');
+
+    const res = await api.put(`/reels/${reelId}/save`);
+
+    if (!res?.data?.success) {
+      throw new Error('Save request failed');
+    }
+
+    return res.data;
+  } catch (err) {
+    console.error('❌ toggleSaveReel error:', err?.response?.data || err.message);
+    throw err;
+  }
+};
+
+/* ======================================================
+   GET SAVED REELS
+====================================================== */
+export const getSavedReels = async () => {
+  try {
+    const res = await api.get('/reels/saved');
+
+    if (!res?.data?.success) {
+      throw new Error('Failed to fetch saved reels');
+    }
+
+    return res.data;
+  } catch (err) {
+    console.error('❌ getSavedReels error:', err?.response?.data || err.message);
+    throw err;
+  }
+};
+
+/* ======================================================
+   REPOST REEL
+====================================================== */
+export const repostReel = async (reelId) => {
+  try {
+    if (!reelId) throw new Error('Reel ID is required');
+
+    const res = await api.post(`/reels/${reelId}/repost`);
+
+    if (!res?.data?.success) {
+      throw new Error('Repost request failed');
+    }
+
+    return res.data;
+  } catch (err) {
+    console.error('❌ repostReel error:', err?.response?.data || err.message);
+    throw err;
+  }
+};
+
+/* ======================================================
    DELETE REEL
 ====================================================== */
 export const deleteReel = async (reelId) => {

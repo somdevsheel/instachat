@@ -39,8 +39,17 @@ router.get('/posts/user/:userId', protect, postController.getUserPosts);
 // Get comments
 router.get('/posts/:postId/comments', protect, postController.getComments);
 
-// Add comment
+// Add comment (or reply, via { replyTo } in the body)
 router.post('/posts/:postId/comments', protect, postController.addComment);
+
+// Repost a post
+router.post('/posts/:postId/repost', protect, postController.repostPost);
+
+// Replies to a specific comment
+router.get('/comments/:commentId/replies', protect, postController.getCommentReplies);
+
+// Like/unlike a comment
+router.put('/comments/:commentId/like', protect, postController.toggleCommentLike);
 
 // Delete post
 router.delete('/posts/:postId', protect, postController.deletePost);

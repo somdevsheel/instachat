@@ -1,22 +1,49 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchReels } from '@instachat/shared';
+import { fetchReels, addNewReel, reelsApi } from '@instachat/shared';
 import ReelSlide from '../components/ReelSlide.jsx';
-import { PlusSquareIcon, ChevronUpIcon, ChevronDownIcon } from '../components/icons.jsx';
+import { ChevronUpIcon, ChevronDownIcon } from '../components/icons.jsx';
 
 export default function ReelsPage() {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
+  const location = useLocation();
   const { reels, loading, error, pagination } = useSelector((state) => state.reels);
 
   const containerRef = useRef(null);
   const slideRefs = useRef(new Map());
   const [activeIndex, setActiveIndex] = useState(0);
 
+  const openReelId = location.state?.openReelId || null;
+  const fetchedRef = useRef(false);
+
   useEffect(() => {
     dispatch(fetchReels({ page: 1 }));
   }, [dispatch]);
+
+  // Deep-link support: when navigated here with { state: { openReelId } }
+  // (e.g. from a repost tile on a profile), keep that specific reel
+  // pinned at the front of the feed. Re-asserts on every reels change
+  // (not just once) so it self-heals if a later fetch replaces the list.
+  useEffect(() => {
+    if (!openReelId || loading || reels.length === 0) return;
+    if (reels[0]?._id === openReelId) return;
+
+    const existing = reels.find((r) => r._id === openReelId);
+    if (existing) {
+      dispatch(addNewReel(existing));
+      return;
+    }
+
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    reelsApi
+      .getReelById(openReelId)
+      .then((res) => {
+        if (res?.data) dispatch(addNewReel(res.data));
+      })
+      .catch(() => {});
+  }, [openReelId, reels, loading, dispatch]);
 
   const registerRef = useCallback((id, el) => {
     if (el) slideRefs.current.set(id, el);
@@ -58,16 +85,6 @@ export default function ReelsPage() {
 
   return (
     <div className="reels-viewer-page">
-      <div className="reels-top-bar">
-        <span className="post-username">Reels</span>
-        <button
-          className="follow-button reels-create-button"
-          onClick={() => navigate('/create', { state: { mode: 'reel' } })}
-        >
-          <PlusSquareIcon /> Create
-        </button>
-      </div>
-
       {loading && reels.length === 0 && (
         <div className="centered-message">Loading reels…</div>
       )}

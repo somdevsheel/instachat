@@ -2,6 +2,7 @@ const postService = require('../services/post.service');
 const notificationService = require('../services/notification.service');
 const catchAsync = require('../utils/catchAsync');
 const extractHashtags = require('../utils/extractHashtags');
+const extractMentions = require('../utils/extractMentions');
 const User = require('../models/user.model');
 const Post = require('../models/Post');
 
@@ -205,7 +206,7 @@ exports.getUserPosts = catchAsync(async (req, res) => {
  */
 exports.addComment = catchAsync(async (req, res) => {
   const { postId } = req.params;
-  const { text } = req.body;
+  const { text, replyTo } = req.body;
   const userId = req.user.id;
 
   if (!text || !text.trim()) {
@@ -215,56 +216,194 @@ exports.addComment = catchAsync(async (req, res) => {
     });
   }
 
-  const commentData = {
+  // Resolve @mentions in the text to real users (silently drops any
+  // that don't match a real username — no error for a typo'd mention).
+  const mentionedUsernames = extractMentions(text);
+  const mentionedUsers = mentionedUsernames.length
+    ? await User.find({ username: { $in: mentionedUsernames } }).select('_id')
+    : [];
+
+  const result = await postService.addComment(postId, {
     user: userId,
-    text: text.trim(),
-    createdAt: new Date(),
-  };
+    content: text.trim(),
+    replyTo: replyTo || null,
+    mentions: mentionedUsers.map((u) => u._id),
+  });
 
-  const post = await postService.addComment(postId, commentData);
-
-  if (!post) {
+  if (!result) {
     return res.status(404).json({
       success: false,
       message: 'Post not found',
     });
   }
 
-  // 🔔 CREATE NOTIFICATION
+  const { comment, postOwnerId, parentAuthorId } = result;
+
+  // 🔔 NOTIFY — the parent comment's author for a reply, otherwise the
+  // post owner. createNotification already no-ops on self-notifying.
   try {
-    await notificationService.createNotification({
-      recipient: post.user._id,
-      sender: userId,
-      type: 'comment',
-      post: postId,
-      message: 'commented on your post',
-    });
+    if (replyTo && parentAuthorId) {
+      await notificationService.createNotification({
+        recipient: parentAuthorId,
+        sender: userId,
+        type: 'comment',
+        post: postId,
+        message: 'replied to your comment',
+      });
+    } else if (postOwnerId) {
+      await notificationService.createNotification({
+        recipient: postOwnerId,
+        sender: userId,
+        type: 'comment',
+        post: postId,
+        message: 'commented on your post',
+      });
+    }
   } catch (notifErr) {
     console.error('Failed to create comment notification:', notifErr);
     // Don't fail the comment action if notification fails
   }
 
+  // 🔔 NOTIFY mentioned users
+  try {
+    await Promise.all(
+      mentionedUsers.map((user) =>
+        notificationService.createNotification({
+          recipient: user._id,
+          sender: userId,
+          type: 'mention',
+          post: postId,
+          message: 'mentioned you in a comment',
+        })
+      )
+    );
+  } catch (notifErr) {
+    console.error('Failed to create mention notification:', notifErr);
+  }
+
   res.status(201).json({
     success: true,
-    data: post.comments,
+    data: comment,
   });
 });
 
 /**
  * ======================================================
- * GET COMMENTS
+ * GET COMMENTS (top-level only, with reply counts)
  * GET /api/v1/feed/posts/:postId/comments
  * ======================================================
  */
 exports.getComments = catchAsync(async (req, res) => {
   const { postId } = req.params;
 
-  const comments = await postService.getComments(postId);
+  const comments = await postService.getComments(postId, req.user.id);
 
   res.status(200).json({
     success: true,
     results: comments.length,
     data: comments,
+  });
+});
+
+/**
+ * ======================================================
+ * GET REPLIES TO A COMMENT
+ * GET /api/v1/feed/comments/:commentId/replies
+ * ======================================================
+ */
+exports.getCommentReplies = catchAsync(async (req, res) => {
+  const { commentId } = req.params;
+
+  const replies = await postService.getCommentReplies(commentId, req.user.id);
+
+  res.status(200).json({
+    success: true,
+    results: replies.length,
+    data: replies,
+  });
+});
+
+/**
+ * ======================================================
+ * TOGGLE COMMENT LIKE
+ * PUT /api/v1/feed/comments/:commentId/like
+ * ======================================================
+ */
+exports.toggleCommentLike = catchAsync(async (req, res) => {
+  const { commentId } = req.params;
+  const userId = req.user.id;
+
+  const result = await postService.toggleCommentLike(commentId, userId);
+
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      message: 'Comment not found',
+    });
+  }
+
+  if (
+    result.liked &&
+    result.commentUserId &&
+    result.commentUserId.toString() !== userId.toString()
+  ) {
+    try {
+      await notificationService.createNotification({
+        recipient: result.commentUserId,
+        sender: userId,
+        type: 'like',
+        message: 'liked your comment',
+      });
+    } catch (notifErr) {
+      console.error('Failed to create comment-like notification:', notifErr);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { liked: result.liked, likesCount: result.likesCount },
+  });
+});
+
+/**
+ * ======================================================
+ * REPOST A POST
+ * POST /api/v1/feed/posts/:postId/repost
+ * ======================================================
+ */
+exports.repostPost = catchAsync(async (req, res) => {
+  const { postId } = req.params;
+  const { caption } = req.body;
+  const userId = req.user.id;
+
+  const result = await postService.repostContent(postId, 'post', userId, caption);
+
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      message: 'Post not found',
+    });
+  }
+
+  const { repost, originalOwnerId } = result;
+
+  if (originalOwnerId && originalOwnerId.toString() !== userId.toString()) {
+    try {
+      await notificationService.createNotification({
+        recipient: originalOwnerId,
+        sender: userId,
+        type: 'repost',
+        post: repost.repostOf,
+        message: 'reposted your post',
+      });
+    } catch (notifErr) {
+      console.error('Failed to create repost notification:', notifErr);
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: repost,
   });
 });
 
@@ -384,6 +523,10 @@ exports.getSavedPosts = catchAsync(async (req, res) => {
 
   const posts = await Post.find({ _id: { $in: user.savedPosts } })
     .populate('user', 'username name profilePicture')
+    .populate({
+      path: 'repostOf',
+      populate: { path: 'user', select: 'username name profilePicture' },
+    })
     .sort({ createdAt: -1 })
     .lean();
 

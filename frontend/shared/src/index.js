@@ -41,6 +41,7 @@ export {
   toggleReelLike,
   trackReelView,
   deleteReel as deleteReelThunk,
+  addNewReel,
 } from './redux/slices/reelSlice';
 
 export { toggleFollow } from './redux/slices/followSlice';

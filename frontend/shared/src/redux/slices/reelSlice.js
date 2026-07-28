@@ -430,8 +430,11 @@ const reelSlice = createSlice({
     },
 
     addNewReel: (state, action) => {
-      // Add new reel at the beginning
-      state.reels.unshift(action.payload);
+      // Add new reel at the beginning. If it's already in the list
+      // (e.g. deep-linking to a reel already present in the feed),
+      // move it to the front instead of duplicating it.
+      const rest = state.reels.filter((r) => r._id !== action.payload._id);
+      state.reels = [action.payload, ...rest];
     },
 
     // ⭐ NEW: Update follow status for a user across all reels

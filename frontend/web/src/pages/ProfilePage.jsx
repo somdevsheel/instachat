@@ -15,10 +15,12 @@ import {
   CalendarIcon,
   UsersIcon,
   PlaySolidIcon,
+  RepostIcon,
 } from '../components/icons.jsx';
 import { formatCount } from '../utils/formatCount.js';
+import { getRepostDisplayMedia } from '../utils/repost.js';
 
-const TABS = ['Posts', 'Reels', 'Tagged', 'About'];
+const TABS = ['Posts', 'Reposts', 'Reels', 'Tagged', 'About'];
 
 function formatJoinDate(dateString) {
   if (!dateString) return '';
@@ -123,7 +125,9 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   const friendsPreview = isOwnProfile ? ownFriends : profile.mutualPreview || [];
-  const photos = (profile.posts || []).slice(0, 6);
+  const ownPosts = (profile.posts || []).filter((post) => !post.repostOf);
+  const reposts = (profile.posts || []).filter((post) => post.repostOf);
+  const photos = ownPosts.slice(0, 6);
   const hasAboutInfo = profile.location || profile.website || profile.createdAt;
 
   return (
@@ -218,7 +222,7 @@ export default function ProfilePage() {
 
         {activeTab === 'Posts' && (
           <div className="profile-grid">
-            {(profile.posts || []).map((post) => (
+            {ownPosts.map((post) => (
               <button
                 key={post._id}
                 type="button"
@@ -228,8 +232,29 @@ export default function ProfilePage() {
                 <PostMedia media={post.media} />
               </button>
             ))}
-            {(profile.posts || []).length === 0 && (
+            {ownPosts.length === 0 && (
               <div className="centered-message">No posts yet.</div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'Reposts' && (
+          <div className="profile-grid">
+            {reposts.map((post) => (
+              <button
+                key={post._id}
+                type="button"
+                className="profile-grid-item"
+                onClick={() => setViewingPostId(post._id)}
+              >
+                <span className="profile-grid-repost-badge">
+                  <RepostIcon />
+                </span>
+                <PostMedia media={getRepostDisplayMedia(post)} />
+              </button>
+            ))}
+            {reposts.length === 0 && (
+              <div className="centered-message">No reposts yet.</div>
             )}
           </div>
         )}
@@ -239,16 +264,26 @@ export default function ProfilePage() {
             {reelsLoading && <div className="centered-message">Loading reels…</div>}
             {!reelsLoading &&
               reels.map((reel) => (
-                <div key={reel._id} className="profile-grid-item profile-reel-item">
+                <button
+                  key={reel._id}
+                  type="button"
+                  className="profile-grid-item profile-reel-item"
+                  onClick={() => navigate('/reels', { state: { openReelId: reel._id } })}
+                >
                   {reel.thumbnailUrl ? (
                     <img className="post-media" src={reel.thumbnailUrl} alt="" />
                   ) : (
                     <video className="post-media" src={reel.videoUrl} muted />
                   )}
+                  {reel.isRepost && (
+                    <span className="profile-grid-repost-badge">
+                      <RepostIcon />
+                    </span>
+                  )}
                   <span className="profile-reel-badge">
                     <PlaySolidIcon />
                   </span>
-                </div>
+                </button>
               ))}
             {!reelsLoading && reels.length === 0 && (
               <div className="centered-message">No reels yet.</div>

@@ -167,6 +167,22 @@ export const sharePost = async (postId) => {
   }
 };
 
+export const repostPost = async (postId, caption) => {
+  try {
+    if (!postId) {
+      throw new Error('Post ID is required');
+    }
+    const res = await api.post(`/feed/posts/${postId}/repost`, { caption });
+    if (!res?.data?.success) {
+      throw new Error('Repost request failed');
+    }
+    return res.data;
+  } catch (err) {
+    console.error('❌ repostPost error:', err?.response?.data || err.message);
+    throw err;
+  }
+};
+
 export const getSavedPosts = async () => {
   try {
     const res = await api.get('/feed/saved');

@@ -165,6 +165,12 @@ router.get('/feed', protect, reelController.getReels);
 router.get('/user/:userId', protect, reelController.getUserReels);
 
 /* =========================
+   SAVED REELS
+   (must come before the /:reelId catch-all)
+========================= */
+router.get('/saved', protect, reelController.getSavedReels);
+
+/* =========================
    CRUD
 ========================= */
 router.post('/', protect, reelController.createReel);
@@ -176,6 +182,8 @@ router.delete('/:reelId', protect, reelController.deleteReel);
 ========================= */
 router.put('/:reelId/like', protect, reelController.toggleLike);
 router.put('/:reelId/view', protect, reelController.incrementView);
+router.put('/:reelId/save', protect, reelController.toggleSaveReel);
+router.post('/:reelId/repost', protect, reelController.repostReel);
 
 /* =========================
    COMMENTS

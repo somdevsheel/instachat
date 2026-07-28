@@ -5,8 +5,9 @@ import Avatar from './Avatar.jsx';
 import PostMedia from './PostMedia.jsx';
 import CommentsSection from './CommentsSection.jsx';
 import ShareModal from './ShareModal.jsx';
+import RepostModal from './RepostModal.jsx';
 import PostMenu from './PostMenu.jsx';
-import { HeartIcon, CommentIcon, ShareIcon, BookmarkIcon } from './icons.jsx';
+import { HeartIcon, CommentIcon, ShareIcon, BookmarkIcon, RepostIcon } from './icons.jsx';
 import { timeAgo } from '../utils/timeAgo.js';
 import { formatCount } from '../utils/formatCount.js';
 
@@ -16,8 +17,19 @@ export default function PostCard({ post }) {
   const [commentsCount, setCommentsCount] = useState(post.commentsCount || 0);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [reposting, setReposting] = useState(false);
   const [saved, setSaved] = useState(post.isSaved || false);
   const [shareCount, setShareCount] = useState(post.shareCount || 0);
+
+  // Reposts have no media/caption of their own — display the original
+  // content, wrapped in an attribution banner.
+  const original = post.repostOf || null;
+  const isReelRepost = original && post.repostOfModel === 'Reel';
+  const displayMedia = original
+    ? isReelRepost
+      ? { type: 'video', variants: { original: original.videoUrl, thumbnail: original.thumbnailUrl } }
+      : original.media
+    : post.media;
 
   const handleLike = async () => {
     const nextLiked = !liked;
@@ -43,6 +55,12 @@ export default function PostCard({ post }) {
     }
   };
 
+  const handleRepost = async (caption) => {
+    // Reposting a repost re-targets onto the original content server-side,
+    // so this call is safe regardless of whether `post` is itself a repost.
+    await postsApi.repostPost(post._id, caption);
+  };
+
   return (
     <article className="post-card">
       <div className="post-header">
@@ -59,8 +77,25 @@ export default function PostCard({ post }) {
         <PostMenu post={post} />
       </div>
 
-      {post.caption && <div className="post-text-only">{post.caption}</div>}
-      {post.media && <PostMedia media={post.media} caption={post.caption} />}
+      {!original && post.caption && <div className="post-text-only">{post.caption}</div>}
+      {!original && post.media && <PostMedia media={post.media} caption={post.caption} />}
+
+      {original && (
+        <>
+          {post.caption && <div className="post-text-only">{post.caption}</div>}
+          <div className="repost-quote">
+            <div className="repost-banner">
+              <RepostIcon active />
+              Reposted from{' '}
+              <Link to={`/profile/${original.user?.username}`} className="post-username">
+                @{original.user?.username}
+              </Link>
+            </div>
+            {original.caption && <div className="post-text-only">{original.caption}</div>}
+            {displayMedia && <PostMedia media={displayMedia} caption={original.caption} />}
+          </div>
+        </>
+      )}
 
       <div className="post-actions-bar">
         <button className={`post-action ${liked ? 'liked' : ''}`} onClick={handleLike}>
@@ -74,6 +109,10 @@ export default function PostCard({ post }) {
         <button className="post-action" onClick={() => setSharing(true)}>
           <ShareIcon />
           {formatCount(shareCount)} {shareCount === 1 ? 'Share' : 'Shares'}
+        </button>
+        <button className="post-action" onClick={() => setReposting(true)}>
+          <RepostIcon />
+          Repost
         </button>
         <div className="post-action-spacer" />
         <button className={`post-save ${saved ? 'active' : ''}`} onClick={handleSave}>
@@ -103,6 +142,10 @@ export default function PostCard({ post }) {
           onClose={() => setSharing(false)}
           onShared={(count) => setShareCount((c) => (typeof count === 'number' ? count : c + 1))}
         />
+      )}
+
+      {reposting && (
+        <RepostModal onClose={() => setReposting(false)} onConfirm={handleRepost} label="post" />
       )}
     </article>
   );

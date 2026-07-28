@@ -1819,6 +1819,8 @@ const catchAsync = require('../utils/catchAsync');
 
 const Reel = require('../models/Reel');
 const User = require('../models/user.model'); // ⭐ Use User model instead
+const reelService = require('../services/reel.service');
+const notificationService = require('../services/notification.service');
 
 const CDN_BASE_URL =
   process.env.CDN_BASE_URL ||
@@ -1970,9 +1972,13 @@ exports.getReels = catchAsync(async (req, res) => {
   console.log('🎬 Found reels:', reels.length);
 
   // ⭐ Get current user's following list
-  const currentUser = await User.findById(userId).select('following').lean();
+  const currentUser = await User.findById(userId).select('following savedReels repostedReels').lean();
   const followingIds = currentUser?.following || [];
   const followingIdsSet = new Set(followingIds.map(id => id.toString()));
+  const savedReelsSet = new Set((currentUser?.savedReels || []).map((id) => id.toString()));
+  const repostedReelsSet = new Set(
+    (currentUser?.repostedReels || []).map((entry) => entry.reel.toString())
+  );
 
   // Helper to construct proper video URL
   const getProperVideoUrl = (reel) => {
@@ -1992,8 +1998,14 @@ exports.getReels = catchAsync(async (req, res) => {
     // Check if user liked this reel
     const isLiked = reel.likes?.some((id) => id.toString() === userId.toString());
 
+    // Check if user saved this reel
+    const isSaved = savedReelsSet.has(reel._id.toString());
+
+    // Check if user already reposted this reel
+    const isReposted = repostedReelsSet.has(reel._id.toString());
+
     // ⭐ Check if user is following the reel creator
-    const isFollowing = reel.user && reel.user._id 
+    const isFollowing = reel.user && reel.user._id
       ? followingIdsSet.has(reel.user._id.toString())
       : false;
 
@@ -2001,6 +2013,8 @@ exports.getReels = catchAsync(async (req, res) => {
       ...reelWithoutKey,
       videoUrl: fixedUrl,
       isLiked,
+      isSaved,
+      isReposted,
       user: {
         ...reel.user,
         isFollowing // ⭐ Add isFollowing to user object
@@ -2093,16 +2107,10 @@ exports.getUserReels = catchAsync(async (req, res) => {
   const targetUserId = req.params.userId;
   const currentUserId = req.user.id;
 
-  const reels = await Reel.find({ 
-    user: targetUserId,
-    $or: [
-      { isActive: true },
-      { isActive: { $exists: false } }
-    ]
-  })
-    .populate('user', 'username profilePicture')
-    .sort({ createdAt: -1 })
-    .lean();
+  const { ownReels, repostedReels } = await reelService.getUserReelsWithReposts(
+    targetUserId,
+    currentUserId
+  );
 
   // ⭐ Check if current user follows the target user
   let isFollowingUser = false;
@@ -2112,28 +2120,34 @@ exports.getUserReels = catchAsync(async (req, res) => {
     isFollowingUser = followingIds.some(id => id.toString() === targetUserId);
   }
 
-  const reelsWithStatus = reels.map((reel) => {
+  const decorate = (reel) => {
     let fixedVideoUrl = reel.videoUrl;
     if (!reel.videoUrl || reel.videoUrl.startsWith('undefined') || reel.videoUrl.includes('.s3.')) {
       if (reel.videoKey) {
         fixedVideoUrl = `${CDN_BASE_URL}/${reel.videoKey}`;
       }
     }
-    
+
     return {
       ...reel,
       videoUrl: fixedVideoUrl,
       isLiked: reel.likes?.some((id) => id.toString() === currentUserId.toString()),
       user: {
         ...reel.user,
-        isFollowing: isFollowingUser // ⭐ Add isFollowing
-      }
+        isFollowing: isFollowingUser, // ⭐ Add isFollowing
+      },
     };
+  };
+
+  const merged = [...ownReels.map(decorate), ...repostedReels.map(decorate)].sort((a, b) => {
+    const aTime = new Date(a.isRepost ? a.repostedAt : a.createdAt);
+    const bTime = new Date(b.isRepost ? b.repostedAt : b.createdAt);
+    return bTime - aTime;
   });
 
   res.status(200).json({
     success: true,
-    data: reelsWithStatus,
+    data: merged,
   });
 });
 
@@ -2385,5 +2399,86 @@ exports.addComment = catchAsync(async (req, res) => {
   res.status(201).json({
     success: true,
     data: newComment,
+  });
+});
+
+/**
+ * ======================================================
+ * TOGGLE SAVE REEL
+ * PUT /api/v1/reels/:reelId/save
+ * ======================================================
+ */
+exports.toggleSaveReel = catchAsync(async (req, res) => {
+  const { reelId } = req.params;
+  const userId = req.user.id;
+
+  const result = await reelService.toggleSaveReel(reelId, userId);
+
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      message: 'Reel not found',
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
+/**
+ * ======================================================
+ * GET SAVED REELS
+ * GET /api/v1/reels/saved
+ * ======================================================
+ */
+exports.getSavedReels = catchAsync(async (req, res) => {
+  const reels = await reelService.getSavedReels(req.user.id);
+
+  res.status(200).json({
+    success: true,
+    results: reels.length,
+    data: reels,
+  });
+});
+
+/**
+ * ======================================================
+ * REPOST A REEL
+ * POST /api/v1/reels/:reelId/repost
+ * ======================================================
+ */
+exports.repostReel = catchAsync(async (req, res) => {
+  const { reelId } = req.params;
+  const userId = req.user.id;
+
+  const result = await reelService.repostReelToProfile(reelId, userId);
+
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      message: 'Reel not found',
+    });
+  }
+
+  const { originalOwnerId, alreadyReposted } = result;
+
+  if (!alreadyReposted && originalOwnerId && originalOwnerId.toString() !== userId.toString()) {
+    try {
+      await notificationService.createNotification({
+        recipient: originalOwnerId,
+        sender: userId,
+        type: 'repost',
+        message: 'reposted your reel',
+      });
+    } catch (notifErr) {
+      console.error('Failed to create repost notification:', notifErr);
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: { reelId, alreadyReposted },
   });
 });

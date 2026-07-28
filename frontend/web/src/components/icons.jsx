@@ -36,6 +36,17 @@ export function ShareIcon() {
   );
 }
 
+export function RepostIcon({ active }) {
+  return (
+    <svg {...base} stroke={active ? '#0af5a0' : 'currentColor'}>
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
+
 export function LogoutIcon() {
   return (
     <svg {...base} width={18} height={18}>

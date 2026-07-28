@@ -2538,7 +2538,11 @@ exports.getUserProfile = async (req, res) => {
 
     const posts = await Post.find({ user: user._id })
       .sort({ createdAt: -1 })
-      .select('media user createdAt')
+      .select('media user createdAt repostOf repostOfModel')
+      .populate({
+        path: 'repostOf',
+        populate: { path: 'user', select: 'username name profilePicture' },
+      })
       .lean();
 
     const currentUser = await User.findById(req.user.id).select(

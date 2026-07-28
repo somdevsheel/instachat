@@ -114,6 +114,19 @@ const PostSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    /* ==============================
+       REPOST (reshares a Post or Reel)
+    ============================== */
+    repostOf: {
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: 'repostOfModel',
+    },
+
+    repostOfModel: {
+      type: String,
+      enum: ['Post', 'Reel'],
+    },
   },
   {
     timestamps: true,

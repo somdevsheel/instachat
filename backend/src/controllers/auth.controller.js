@@ -906,7 +906,11 @@ exports.getMe = async (req, res) => {
 
     const posts = await Post.find({ user: user._id })
       .sort({ createdAt: -1 })
-      .select("_id media createdAt");
+      .select("_id media createdAt repostOf repostOfModel")
+      .populate({
+        path: "repostOf",
+        populate: { path: "user", select: "username name profilePicture" },
+      });
 
     return res.status(200).json({
       success: true,

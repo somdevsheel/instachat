@@ -8,6 +8,7 @@ const PUSH_BODY_BY_TYPE = {
   follow: 'started following you',
   message: 'sent you a message',
   mention: 'mentioned you',
+  repost: 'reposted your content',
 };
 
 /**

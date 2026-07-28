@@ -1112,6 +1112,54 @@ button {
   padding: 0 18px 14px;
 }
 
+.repost-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.repost-banner svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.repost-quote {
+  margin: 0 18px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  padding-top: 10px;
+}
+
+.repost-quote .repost-banner {
+  padding: 0 12px 8px;
+}
+
+.repost-quote .post-text-only {
+  padding: 0 12px 10px;
+}
+
+.repost-quote .post-media {
+  border-radius: 0;
+}
+
+.repost-caption-input {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 12px;
+}
+
 .post-likes {
   font-weight: 600;
   font-size: 13px;
@@ -1348,6 +1396,14 @@ button {
 
 .reel-rail-button.liked {
   color: var(--danger);
+}
+
+.reel-rail-button.reposted {
+  color: #0af5a0;
+}
+
+.reel-rail-button:disabled {
+  cursor: default;
 }
 
 .reels-nav-buttons {
@@ -2124,6 +2180,7 @@ img.message-attachment {
 }
 
 .profile-grid-item {
+  position: relative;
   display: block;
   width: 100%;
   padding: 0;
@@ -2144,6 +2201,21 @@ img.message-attachment {
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 4px;
+}
+
+.profile-grid-repost-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: flex;
+  color: #fff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
+}
+
+.profile-grid-repost-badge svg {
+  width: 18px;
+  height: 18px;
 }
 
 .profile-reel-item {
@@ -2399,21 +2471,109 @@ img.message-attachment {
   font-size: 14px;
 }
 
+.comment-row.is-reply {
+  padding: 4px 0;
+}
+
+.comment-body {
+  flex: 1;
+  min-width: 0;
+}
+
 .comment-text {
   font-size: 14px;
   color: var(--text-primary);
 }
 
+.comment-mention {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.comment-like-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.comment-like-btn.liked {
+  color: var(--danger);
+}
+
+.comment-reply-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.comment-view-replies-btn {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.comment-replies {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.comment-replying-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.comment-replying-banner button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .comment-input-row {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-top: 8px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
-.comment-input-row input {
+.comment-input-wrap {
+  position: relative;
   flex: 1;
+}
+
+.comment-input-wrap input {
+  width: 100%;
   border: none;
   outline: none;
   font-size: 14px;
@@ -2421,7 +2581,7 @@ img.message-attachment {
   color: var(--text-primary);
 }
 
-.comment-input-row button {
+.comment-input-row > button {
   background: none;
   border: none;
   color: var(--accent);
@@ -2430,9 +2590,43 @@ img.message-attachment {
   cursor: pointer;
 }
 
-.comment-input-row button:disabled {
+.comment-input-row > button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 220px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface-raised, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+  padding: 4px;
+}
+
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.mention-option:hover {
+  background: var(--hover);
 }
 
 /* ============ COMPOSER ============ */

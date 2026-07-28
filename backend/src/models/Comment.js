@@ -30,6 +30,12 @@ const CommentSchema = new mongoose.Schema({
     default: null
   },
 
+  // --- Tags/mentions (@username in the comment text) ---
+  mentions: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+
   // --- Engagement ---
   likes: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -58,5 +64,8 @@ CommentSchema.index({ post: 1, createdAt: -1 });
 
 // 2. Fetch comments for a specific reel quickly
 CommentSchema.index({ reel: 1, createdAt: -1 });
+
+// 3. Fetch replies to a specific comment quickly
+CommentSchema.index({ replyTo: 1, createdAt: 1 });
 
 module.exports = mongoose.model('Comment', CommentSchema);

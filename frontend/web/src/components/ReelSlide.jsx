@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { toggleReelLike, trackReelView } from '@instachat/shared';
+import { toggleReelLike, trackReelView, reelsApi } from '@instachat/shared';
 import Avatar from './Avatar.jsx';
 import ShareModal from './ShareModal.jsx';
 import ReelCommentsPanel from './ReelCommentsPanel.jsx';
-import { HeartIcon, CommentIcon, ShareIcon } from './icons.jsx';
+import { HeartIcon, CommentIcon, ShareIcon, BookmarkIcon, RepostIcon } from './icons.jsx';
 
 export default function ReelSlide({ reel, registerRef }) {
   const dispatch = useDispatch();
@@ -16,7 +16,32 @@ export default function ReelSlide({ reel, registerRef }) {
   const [commentsCount, setCommentsCount] = useState(reel.commentsCount || 0);
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [saved, setSaved] = useState(reel.isSaved || false);
+  const [reposted, setReposted] = useState(reel.isReposted || false);
+  const [reposting, setReposting] = useState(false);
   const [hasTrackedView, setHasTrackedView] = useState(false);
+
+  const handleSave = async () => {
+    setSaved((v) => !v);
+    try {
+      await reelsApi.toggleSaveReel(reel._id);
+    } catch {
+      setSaved((v) => !v);
+    }
+  };
+
+  const handleRepost = async () => {
+    if (reposted || reposting) return;
+    setReposting(true);
+    setReposted(true);
+    try {
+      await reelsApi.repostReel(reel._id);
+    } catch {
+      setReposted(false);
+    } finally {
+      setReposting(false);
+    }
+  };
 
   useEffect(() => {
     registerRef?.(reel._id, slideRef.current);
@@ -86,6 +111,16 @@ export default function ReelSlide({ reel, registerRef }) {
         <button className="reel-rail-button" onClick={() => setShowShare(true)}>
           <ShareIcon />
           <span>{reel.shareCount || ''}</span>
+        </button>
+        <button
+          className={`reel-rail-button ${reposted ? 'reposted' : ''}`}
+          onClick={handleRepost}
+          disabled={reposted}
+        >
+          <RepostIcon active={reposted} />
+        </button>
+        <button className={`reel-rail-button ${saved ? 'liked' : ''}`} onClick={handleSave}>
+          <BookmarkIcon active={saved} />
         </button>
       </div>
 

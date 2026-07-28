@@ -614,6 +614,13 @@ const userSchema = mongoose.Schema(
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     closeFriends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
+    savedReels: [{ type: mongoose.Schema.Types.ObjectId, ref: "Reel" }],
+    repostedReels: [
+      {
+        reel: { type: mongoose.Schema.Types.ObjectId, ref: "Reel" },
+        repostedAt: { type: Date, default: Date.now },
+      },
+    ],
 
     lastSeen: {
       type: Date,
