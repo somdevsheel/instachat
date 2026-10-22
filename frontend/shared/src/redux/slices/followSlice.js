@@ -14,8 +14,7 @@
 
 //       const res = await followUser(userId);
 
-//       // Expecting backend: { success, data: { following, followersCount } }
-//       if (!res?.success) {
+// //       if (!res?.success) {
 //         throw new Error('Follow action failed');
 //       }
 
@@ -95,21 +94,23 @@ export const toggleFollow = createAsyncThunk(
 
       const res = await followUser(userId);
 
-      // Expecting backend: { success, data: { following, followersCount } }
       if (!res?.success) {
         throw new Error('Follow action failed');
       }
 
+      // The API returns these at the top level ({ success, following,
+      // requested, followersCount }), not under `data`.
       const payload = {
         userId,
-        following: res.data?.following,
-        followersCount: res.data?.followersCount,
+        following: res.following ?? res.data?.following,
+        requested: res.requested ?? false,
+        followersCount: res.followersCount ?? res.data?.followersCount,
       };
 
       // ⭐ SYNC: Update follow status in reels
       dispatch(updateUserFollowStatus({
         userId,
-        following: res.data?.following,
+        following: payload.following,
       }));
 
       return payload;

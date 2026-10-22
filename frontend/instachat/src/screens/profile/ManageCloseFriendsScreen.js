@@ -68,8 +68,9 @@ const ManageCloseFriendsScreen = ({ navigation }) => {
       </View>
 
       <Text style={styles.subtitle}>
-        Choose who sees your Close Friends posts and shows up in your
-        Close Friends feed tab.
+        People you add here show up in your Close Friends feed tab, so
+        you can catch up with them first. This doesn't change who can see
+        your posts.
       </Text>
 
       {loading ? (

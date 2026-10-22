@@ -3,8 +3,6 @@ const router = express.Router();
 const notificationController = require('../../controllers/notification.controller');
 const { protect } = require('../../middlewares/auth.middleware');
 
-console.log('🔔 Notification routes file loaded'); // ✅ Add this
-
 // GET /api/v1/notifications
 router.get('/', protect, notificationController.getNotifications);
 
@@ -19,7 +17,5 @@ router.put('/read/all', protect, notificationController.markAllAsRead);
 
 // DELETE /api/v1/notifications/:notificationId
 router.delete('/:notificationId', protect, notificationController.deleteNotification);
-
-console.log('🔔 Notification routes registered'); // ✅ Add this
 
 module.exports = router;

@@ -201,6 +201,7 @@ const EditProfileScreen = ({ navigation }) => {
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"
+            maxLength={30}
           />
         </View>
 
@@ -211,6 +212,7 @@ const EditProfileScreen = ({ navigation }) => {
             value={bio}
             onChangeText={setBio}
             multiline
+            maxLength={150}
           />
         </View>
       </View>

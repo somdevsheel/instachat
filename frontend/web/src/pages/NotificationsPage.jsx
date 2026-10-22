@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   notificationApi,
+  userApi,
   setNotifications,
   markAsRead,
   markAllAsRead,
@@ -15,6 +16,7 @@ const MESSAGE_BY_TYPE = {
   like: 'liked your post',
   comment: 'commented on your post',
   follow: 'started following you',
+  follow_request: 'requested to follow you',
   message: 'sent you a message',
   mention: 'mentioned you',
 };
@@ -24,13 +26,32 @@ export default function NotificationsPage() {
   const navigate = useNavigate();
   const { notifications } = useSelector((state) => state.notifications);
   const [loading, setLoading] = useState(true);
+  // Pending follow requests to my (private) account.
+  const [requests, setRequests] = useState([]);
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     notificationApi
       .getNotifications()
       .then((res) => dispatch(setNotifications(res?.data || [])))
       .finally(() => setLoading(false));
+    userApi
+      .getFollowRequests()
+      .then((res) => setRequests(res?.data || []))
+      .catch(() => {});
   }, [dispatch]);
+
+  const respond = async (userId, action) => {
+    setBusyId(userId);
+    try {
+      await userApi.respondToFollowRequest(userId, action);
+      setRequests((prev) => prev.filter((r) => r._id !== userId));
+    } catch {
+      // leave the row so the user can retry
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const handleClick = async (n) => {
     if (!n.read) {
@@ -45,7 +66,7 @@ export default function NotificationsPage() {
       }
     }
 
-    if (n.type === 'follow') {
+    if (n.type === 'follow' || n.type === 'follow_request') {
       navigate(`/profile/${n.sender?.username}`);
     } else if (n.post?._id) {
       navigate('/');
@@ -68,6 +89,43 @@ export default function NotificationsPage() {
           </button>
         )}
       </div>
+
+      {requests.length > 0 && (
+        <section className="follow-requests">
+          <h3 className="right-panel-section-header">Follow requests</h3>
+          <ul className="notification-list">
+            {requests.map((r) => (
+              <li key={r._id} className="notification-item">
+                <Avatar src={r.profilePicture} username={r.username} size={44} />
+                <div className="notification-body">
+                  <button
+                    type="button"
+                    className="post-username comments-toggle"
+                    onClick={() => navigate(`/profile/${r.username}`)}
+                  >
+                    {r.username}
+                  </button>
+                  {r.name && <div className="post-time">{r.name}</div>}
+                </div>
+                <button
+                  className="follow-button"
+                  disabled={busyId === r._id}
+                  onClick={() => respond(r._id, 'accept')}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="follow-button secondary"
+                  disabled={busyId === r._id}
+                  onClick={() => respond(r._id, 'decline')}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {loading && <div className="centered-message">Loading…</div>}
       {!loading && notifications.length === 0 && (

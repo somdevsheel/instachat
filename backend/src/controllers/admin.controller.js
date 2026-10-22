@@ -8,23 +8,53 @@ const Notification = require('../models/notification.model');
 const Chat = require('../models/chat.model');
 const Message = require('../models/message.model');
 const catchAsync = require('../utils/catchAsync');
-const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const s3Client = require('../config/s3Client');
+const escapeRegex = require('../utils/escapeRegex');
+const graph = require('../services/graph.service');
+const { deleteAccountData } = require('../services/accountDeletion.service');
+const contentDeletion = require('../services/contentDeletion.service');
+const logger = require('../utils/logger');
+const mongoose = require('mongoose');
+const { getIO } = require('../services/socket.service');
 
-const BUCKET = process.env.AWS_BUCKET_NAME;
+/* =========================
+   MODERATION GUARDS
+========================= */
+const ROLE_RANK = { user: 0, admin: 1, superadmin: 2 };
 
-/* ======================================================
-   HELPER: Delete S3 Object
-====================================================== */
-const deleteFromS3 = async (key) => {
-  if (!key) return;
+const httpError = (message, statusCode) => {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+};
+
+/**
+ * Admins may only moderate accounts with a LOWER role than their own,
+ * and never themselves — so one admin can't ban/delete another admin
+ * or the superadmin, and nobody can lock themselves out by accident.
+ */
+const assertCanModerate = async (actor, targetId) => {
+  if (!mongoose.isValidObjectId(targetId)) throw httpError('User not found', 404);
+  if (String(targetId) === actor._id.toString()) {
+    throw httpError("You can't moderate your own account", 400);
+  }
+  const target = await User.findById(targetId).select('role');
+  if (!target) throw httpError('User not found', 404);
+  if ((ROLE_RANK[target.role] || 0) >= (ROLE_RANK[actor.role] || 0)) {
+    throw httpError("You can't moderate an account with equal or higher privileges", 403);
+  }
+  return target;
+};
+
+/**
+ * Close a user's live socket connections (on every server process).
+ * Bans etc. already block new requests; this stops an open session
+ * from continuing to receive realtime events.
+ */
+const disconnectUser = (userId) => {
   try {
-    await s3Client.send(
-      new DeleteObjectCommand({ Bucket: BUCKET, Key: key })
-    );
-    console.log('🗑️ S3 deleted:', key);
+    getIO().in(String(userId)).disconnectSockets(true);
   } catch (err) {
-    console.error('S3 delete error:', err.message);
+    logger.error('Failed to disconnect user sockets:', err);
   }
 };
 
@@ -130,9 +160,9 @@ exports.getUsers = catchAsync(async (req, res) => {
 
   if (search) {
     filter.$or = [
-      { username: { $regex: search, $options: 'i' } },
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
+      { username: { $regex: escapeRegex(search), $options: 'i' } },
+      { name: { $regex: escapeRegex(search), $options: 'i' } },
+      { email: { $regex: escapeRegex(search), $options: 'i' } },
     ];
   }
 
@@ -153,9 +183,10 @@ exports.getUsers = catchAsync(async (req, res) => {
     User.countDocuments(filter),
   ]);
 
-  // Add post/reel counts
+  // Add post/reel counts (+ follow counts from Postgres)
+  const graphCounts = await graph.getCountsMany(users.map((u) => u._id.toString()));
   const enrichedUsers = await Promise.all(
-    users.map(async (user) => {
+    users.map(async ({ followers, following, closeFriends, blockedUsers, mutedUsers, ...user }) => {
       const [postCount, reelCount] = await Promise.all([
         Post.countDocuments({ user: user._id }),
         Reel.countDocuments({ user: user._id }),
@@ -164,8 +195,7 @@ exports.getUsers = catchAsync(async (req, res) => {
         ...user,
         postCount,
         reelCount,
-        followersCount: user.followers?.length || 0,
-        followingCount: user.following?.length || 0,
+        ...graphCounts[user._id.toString()],
       };
     })
   );
@@ -207,8 +237,7 @@ exports.getUserDetail = catchAsync(async (req, res) => {
       reels,
       reportsAgainst: reports,
       reportsMade,
-      followersCount: user.followers?.length || 0,
-      followingCount: user.following?.length || 0,
+      ...(await graph.getCounts(user._id)),
     },
   });
 });
@@ -216,6 +245,7 @@ exports.getUserDetail = catchAsync(async (req, res) => {
 // PUT /api/v1/admin/users/:userId/ban
 exports.banUser = catchAsync(async (req, res) => {
   const { reason } = req.body;
+  await assertCanModerate(req.user, req.params.userId);
 
   const user = await User.findByIdAndUpdate(
     req.params.userId,
@@ -230,6 +260,8 @@ exports.banUser = catchAsync(async (req, res) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
+  disconnectUser(user._id);
+
   res.status(200).json({
     success: true,
     message: `User @${user.username} has been banned`,
@@ -239,6 +271,7 @@ exports.banUser = catchAsync(async (req, res) => {
 
 // PUT /api/v1/admin/users/:userId/unban
 exports.unbanUser = catchAsync(async (req, res) => {
+  await assertCanModerate(req.user, req.params.userId);
   const user = await User.findByIdAndUpdate(
     req.params.userId,
     {
@@ -264,7 +297,9 @@ exports.unbanUser = catchAsync(async (req, res) => {
 // PUT /api/v1/admin/users/:userId/suspend
 exports.suspendUser = catchAsync(async (req, res) => {
   const { days, reason } = req.body;
-  const suspendDays = parseInt(days) || 7;
+  await assertCanModerate(req.user, req.params.userId);
+  // 1..365 days (negative / huge values would make no sense)
+  const suspendDays = Math.min(Math.max(parseInt(days, 10) || 7, 1), 365);
 
   const suspendedUntil = new Date();
   suspendedUntil.setDate(suspendedUntil.getDate() + suspendDays);
@@ -283,6 +318,8 @@ exports.suspendUser = catchAsync(async (req, res) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
+  disconnectUser(user._id);
+
   res.status(200).json({
     success: true,
     message: `User @${user.username} suspended for ${suspendDays} days`,
@@ -292,52 +329,15 @@ exports.suspendUser = catchAsync(async (req, res) => {
 
 // DELETE /api/v1/admin/users/:userId
 exports.deleteUser = catchAsync(async (req, res) => {
-  const user = await User.findById(req.params.userId);
+  await assertCanModerate(req.user, req.params.userId);
+  const user = await User.findById(req.params.userId).select('username');
   if (!user) {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  // Delete all user content
-  const [posts, reels, stories] = await Promise.all([
-    Post.find({ user: user._id }).lean(),
-    Reel.find({ user: user._id }).select('+videoKey').lean(),
-    Story.find({ user: user._id }).lean(),
-  ]);
-
-  // Delete S3 media
-  for (const post of posts) {
-    if (post.media?.originalKey) await deleteFromS3(post.media.originalKey);
-  }
-  for (const reel of reels) {
-    if (reel.videoKey) await deleteFromS3(reel.videoKey);
-  }
-  for (const story of stories) {
-    if (story.media?.key) await deleteFromS3(story.media.key);
-  }
-
-  // Delete all DB records
-  await Promise.all([
-    Post.deleteMany({ user: user._id }),
-    Reel.deleteMany({ user: user._id }),
-    Story.deleteMany({ user: user._id }),
-    Comment.deleteMany({ user: user._id }),
-    Notification.deleteMany({
-      $or: [{ recipient: user._id }, { sender: user._id }],
-    }),
-    Report.deleteMany({
-      $or: [{ reporter: user._id }, { targetUser: user._id }],
-    }),
-    // Remove from followers/following lists
-    User.updateMany(
-      { followers: user._id },
-      { $pull: { followers: user._id } }
-    ),
-    User.updateMany(
-      { following: user._id },
-      { $pull: { following: user._id } }
-    ),
-    User.deleteOne({ _id: user._id }),
-  ]);
+  // Full erasure: content, messages, media, likes, graph... (see service)
+  await deleteAccountData(user._id);
+  disconnectUser(user._id);
 
   res.status(200).json({
     success: true,
@@ -360,8 +360,8 @@ exports.getPosts = catchAsync(async (req, res) => {
   const filter = {};
   if (search) {
     filter.$or = [
-      { caption: { $regex: search, $options: 'i' } },
-      { hashtags: { $regex: search, $options: 'i' } },
+      { caption: { $regex: escapeRegex(search), $options: 'i' } },
+      { hashtags: { $regex: escapeRegex(search), $options: 'i' } },
     ];
   }
 
@@ -405,20 +405,13 @@ exports.deletePost = catchAsync(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Post not found' });
   }
 
-  // Delete media from S3
-  if (post.media?.originalKey) {
-    await deleteFromS3(post.media.originalKey);
-  }
-
-  // Delete associated comments and notifications
+  // Media (S3 + variants), comments, reposts, saves, notifications
   await Promise.all([
-    Comment.deleteMany({ post: post._id }),
-    Notification.deleteMany({ post: post._id }),
+    contentDeletion.deletePost(post._id),
     Report.updateMany(
       { targetPost: post._id },
       { status: 'resolved', actionTaken: 'content_removed' }
     ),
-    Post.deleteOne({ _id: post._id }),
   ]);
 
   res.status(200).json({
@@ -441,7 +434,7 @@ exports.getReels = catchAsync(async (req, res) => {
 
   const filter = {};
   if (search) {
-    filter.caption = { $regex: search, $options: 'i' };
+    filter.caption = { $regex: escapeRegex(search), $options: 'i' };
   }
 
   const [reels, total] = await Promise.all([
@@ -484,15 +477,12 @@ exports.deleteReel = catchAsync(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Reel not found' });
   }
 
-  if (reel.videoKey) await deleteFromS3(reel.videoKey);
-
   await Promise.all([
-    Comment.deleteMany({ reel: reel._id }),
+    contentDeletion.deleteReel(reel._id),
     Report.updateMany(
       { targetReel: reel._id },
       { status: 'resolved', actionTaken: 'content_removed' }
     ),
-    Reel.deleteOne({ _id: reel._id }),
   ]);
 
   res.status(200).json({
@@ -547,14 +537,12 @@ exports.deleteStory = catchAsync(async (req, res) => {
       .json({ success: false, message: 'Story not found' });
   }
 
-  if (story.media?.key) await deleteFromS3(story.media.key);
-
   await Promise.all([
+    contentDeletion.deleteStory(story._id),
     Report.updateMany(
       { targetStory: story._id },
       { status: 'resolved', actionTaken: 'content_removed' }
     ),
-    Story.deleteOne({ _id: story._id }),
   ]);
 
   res.status(200).json({
@@ -665,25 +653,11 @@ exports.takeReportAction = catchAsync(async (req, res) => {
 
       // Delete the content
       if (report.targetType === 'post' && report.targetPost) {
-        const post = await Post.findById(report.targetPost);
-        if (post) {
-          if (post.media?.originalKey) await deleteFromS3(post.media.originalKey);
-          await Comment.deleteMany({ post: post._id });
-          await Post.deleteOne({ _id: post._id });
-        }
+        await contentDeletion.deletePost(report.targetPost);
       } else if (report.targetType === 'reel' && report.targetReel) {
-        const reel = await Reel.findById(report.targetReel).select('+videoKey');
-        if (reel) {
-          if (reel.videoKey) await deleteFromS3(reel.videoKey);
-          await Comment.deleteMany({ reel: reel._id });
-          await Reel.deleteOne({ _id: reel._id });
-        }
+        await contentDeletion.deleteReel(report.targetReel);
       } else if (report.targetType === 'story' && report.targetStory) {
-        const story = await Story.findById(report.targetStory);
-        if (story) {
-          if (story.media?.key) await deleteFromS3(story.media.key);
-          await Story.deleteOne({ _id: story._id });
-        }
+        await contentDeletion.deleteStory(report.targetStory);
       } else if (report.targetType === 'comment' && report.targetComment) {
         await Comment.deleteOne({ _id: report.targetComment });
       }
@@ -704,6 +678,7 @@ exports.takeReportAction = catchAsync(async (req, res) => {
       break;
 
     case 'suspend_user':
+      if (report.targetUser) await assertCanModerate(req.user, report.targetUser);
       report.status = 'resolved';
       report.actionTaken = 'user_suspended';
       if (report.targetUser) {
@@ -714,10 +689,13 @@ exports.takeReportAction = catchAsync(async (req, res) => {
           suspendedUntil: suspendUntil,
           banReason: 'Suspended due to reported content',
         });
+        // After the update, so an instant reconnect is already refused.
+        disconnectUser(report.targetUser);
       }
       break;
 
     case 'ban_user':
+      if (report.targetUser) await assertCanModerate(req.user, report.targetUser);
       report.status = 'resolved';
       report.actionTaken = 'user_banned';
       if (report.targetUser) {
@@ -725,6 +703,7 @@ exports.takeReportAction = catchAsync(async (req, res) => {
           isBanned: true,
           banReason: 'Banned due to reported content',
         });
+        disconnectUser(report.targetUser);
       }
       break;
 
@@ -756,7 +735,7 @@ exports.getComments = catchAsync(async (req, res) => {
 
   const filter = {};
   if (search) {
-    filter.content = { $regex: search, $options: 'i' };
+    filter.content = { $regex: escapeRegex(search), $options: 'i' };
   }
 
   const [comments, total] = await Promise.all([
@@ -826,6 +805,10 @@ exports.createReport = catchAsync(async (req, res) => {
     });
   }
 
+  if (!mongoose.isValidObjectId(targetId)) {
+    return res.status(404).json({ success: false, message: 'Reported content not found' });
+  }
+
   const reportData = {
     reporter: req.user.id,
     targetType,
@@ -863,6 +846,36 @@ exports.createReport = catchAsync(async (req, res) => {
         success: false,
         message: 'Invalid target type',
       });
+  }
+
+  const targetField = {
+    post: 'targetPost',
+    reel: 'targetReel',
+    story: 'targetStory',
+    comment: 'targetComment',
+    user: 'targetUser',
+  }[targetType];
+
+  // Reporting something that doesn't exist.
+  if (targetType !== 'user' && !reportData.targetUser) {
+    return res.status(404).json({ success: false, message: 'Reported content not found' });
+  }
+  if (targetType === 'user' && !(await User.exists({ _id: targetId }))) {
+    return res.status(404).json({ success: false, message: 'Reported user not found' });
+  }
+
+  // One open report per reporter per target (no report spamming).
+  const existing = await Report.findOne({
+    reporter: req.user.id,
+    [targetField]: targetId,
+    status: { $in: ['pending', 'reviewing'] },
+  });
+  if (existing) {
+    return res.status(200).json({
+      success: true,
+      message: 'You have already reported this',
+      data: existing,
+    });
   }
 
   const report = await Report.create(reportData);

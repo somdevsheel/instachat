@@ -1,7 +1,9 @@
+const crypto = require('crypto');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const s3Client = require('../config/s3Client');
 const catchAsync = require('../utils/catchAsync');
+const logger = require('../utils/logger');
 
 /**
  * ======================================================
@@ -20,7 +22,7 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
   const { mediaType, mimeType, fileSizeMB, context } = req.body;
   const userId = req.user.id;
 
-  console.log('📥 Presign request:', {
+  logger.debug('📥 Presign request:', {
     mediaType,
     mimeType,
     fileSizeMB,
@@ -42,6 +44,36 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: 'mediaType must be "image" or "video"',
+    });
+  }
+
+  // Allowlist so nobody can presign text/html, image/svg+xml, etc. and
+  // host executable content on our CDN. Maps MIME -> file extension.
+  const ALLOWED_MIME = {
+    image: {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+    },
+    video: {
+      'video/mp4': 'mp4',
+      'video/quicktime': 'mov',
+      'video/x-matroska': 'mkv',
+      'video/webm': 'webm',
+      'video/3gpp': '3gp',
+    },
+  };
+
+  const normalizedMime = String(mimeType).toLowerCase().trim();
+  const extension = ALLOWED_MIME[mediaType][normalizedMime];
+  if (!extension) {
+    return res.status(400).json({
+      success: false,
+      message: `Unsupported ${mediaType} type: ${mimeType}`,
     });
   }
 
@@ -67,8 +99,9 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
      S3 KEY GENERATION
   ========================= */
   const timestamp = Date.now();
-  const randomId = Math.random().toString(36).slice(2);
-  const extension = mimeType.split('/')[1] || 'bin';
+  // Unguessable: media URLs are public on the CDN, so the file name is
+  // what protects e.g. a private account's photo from being found.
+  const randomId = crypto.randomBytes(16).toString('hex');
 
   // ✅ MATCHES YOUR FEED + POST STRUCTURE (chat attachments get their own prefix)
   const folder = context === 'chat' ? 'chats' : 'posts';
@@ -77,7 +110,7 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
       ? `users/${userId}/${folder}/images/${timestamp}-${randomId}.${extension}`
       : `users/${userId}/${folder}/videos/${timestamp}-${randomId}.${extension}`;
 
-  console.log('🔑 Generated S3 key:', key);
+  logger.debug('🔑 Generated S3 key:', key);
 
   /* =========================
      PRESIGN URL
@@ -85,6 +118,7 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
   const command = new PutObjectCommand({
     Bucket: process.env.AWS_BUCKET_NAME,
     Key: key,
+    // Must match the Content-Type header the client PUTs with.
     ContentType: mimeType,
 
     // Cache rules
@@ -98,7 +132,7 @@ exports.getPresignedUploadUrl = catchAsync(async (req, res) => {
     expiresIn: 600, // 10 minutes
   });
 
-  console.log('✅ Presigned URL generated');
+  logger.debug('✅ Presigned URL generated');
 
   /* =========================
      RESPONSE

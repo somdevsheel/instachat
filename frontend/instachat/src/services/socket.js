@@ -10,8 +10,9 @@ import {
 } from '../redux/slices/chatSlice';
 import Toast from 'react-native-toast-message';
 
-// const SOCKET_URL = "https://api.grownoww.com";
-const SOCKET_URL = 'http://192.168.1.3:5000';
+// Set EXPO_PUBLIC_SOCKET_URL in frontend/instachat/.env for local dev.
+const SOCKET_URL =
+  process.env.EXPO_PUBLIC_SOCKET_URL || 'https://api.grownoww.com';
 
 let socket = null;
 // initSocket() is async (it awaits the stored token), so a caller that
@@ -35,7 +36,10 @@ export const initSocket = () => {
 
     const s = SocketIO.io(SOCKET_URL, {
       auth: { token },
-      transports: ['polling', 'websocket'],
+      // WebSocket only: with several server processes, long-polling
+      // requests would land on different processes and break the
+      // session (that would need sticky load balancing).
+      transports: ['websocket'],
       upgrade: true,
       autoConnect: true,
       reconnection: true,

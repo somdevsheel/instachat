@@ -5,6 +5,13 @@ const extractHashtags = require('../utils/extractHashtags');
 const extractMentions = require('../utils/extractMentions');
 const User = require('../models/user.model');
 const Post = require('../models/Post');
+const Comment = require('../models/Comment');
+const mongoose = require('mongoose');
+const access = require('../services/access.service');
+const { assertRepostable } = access;
+const { verifyUploadedMedia } = require('../utils/verifyUpload');
+const logger = require('../utils/logger');
+const str = require('../utils/str');
 
 /**
  * ======================================================
@@ -26,7 +33,7 @@ exports.createPost = catchAsync(async (req, res) => {
   const { caption, media, location } = req.body;
   const userId = req.user.id;
 
-  const trimmedCaption = caption?.trim() || '';
+  const trimmedCaption = str(caption) || '';
 
   if (!media && !trimmedCaption) {
     return res.status(400).json({
@@ -51,6 +58,8 @@ exports.createPost = catchAsync(async (req, res) => {
       });
     }
 
+    await verifyUploadedMedia(media.originalKey, userId, media.type);
+
     mediaWithUrls = {
       type: media.type,
       originalKey: media.originalKey,
@@ -64,7 +73,7 @@ exports.createPost = catchAsync(async (req, res) => {
     user: userId,
     caption: trimmedCaption,
     media: mediaWithUrls,
-    location: location?.trim() || '',
+    location: str(location) || '',
     hashtags: extractHashtags(trimmedCaption),
   });
 
@@ -117,6 +126,8 @@ exports.getPostById = catchAsync(async (req, res) => {
   const { postId } = req.params;
   const currentUserId = req.user?.id || null;
 
+  await access.loadViewable(Post, postId, currentUserId);
+
   const post = await postService.getPostById(postId, currentUserId);
 
   if (!post) {
@@ -142,6 +153,8 @@ exports.likePost = catchAsync(async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.id;
 
+  const target = await access.loadViewable(Post, postId, userId);
+
   const result = await postService.toggleLike(postId, userId);
 
   // 🔔 CREATE NOTIFICATION (only when liking, not unliking)
@@ -157,21 +170,18 @@ exports.likePost = catchAsync(async (req, res) => {
         message: 'liked your post',
       });
     } catch (notifErr) {
-      console.error('Failed to create like notification:', notifErr);
+      logger.error('Failed to create like notification:', notifErr);
       // Don't fail the like action if notification fails
     }
   }
 
-  // 🔔 Real-time update (optional, safe)
-  const io = req.app.get('io');
-  if (io) {
-    io.emit('post_like_updated', {
-      postId,
-      userId,
-      liked: result.liked,
-      likesCount: result.likesCount,
-    });
-  }
+  // 🔔 Real-time update (private accounts: owner only)
+  access.emitForOwner(req.app.get('io'), target.user, 'post_like_updated', {
+    postId,
+    userId,
+    liked: result.liked,
+    likesCount: result.likesCount,
+  });
 
   res.status(200).json({
     success: true,
@@ -188,6 +198,14 @@ exports.likePost = catchAsync(async (req, res) => {
 exports.getUserPosts = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const currentUserId = req.user?.id || null;
+
+  const owner = mongoose.isValidObjectId(userId)
+    ? await User.findById(userId).select('isPrivate').lean()
+    : null;
+  if (!owner) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+  await access.assertCanView(currentUserId, owner);
 
   const posts = await postService.getUserPosts(userId, currentUserId);
 
@@ -215,6 +233,8 @@ exports.addComment = catchAsync(async (req, res) => {
       message: 'Comment text is required',
     });
   }
+
+  await access.loadViewable(Post, postId, userId);
 
   // Resolve @mentions in the text to real users (silently drops any
   // that don't match a real username — no error for a typo'd mention).
@@ -260,7 +280,7 @@ exports.addComment = catchAsync(async (req, res) => {
       });
     }
   } catch (notifErr) {
-    console.error('Failed to create comment notification:', notifErr);
+    logger.error('Failed to create comment notification:', notifErr);
     // Don't fail the comment action if notification fails
   }
 
@@ -278,7 +298,7 @@ exports.addComment = catchAsync(async (req, res) => {
       )
     );
   } catch (notifErr) {
-    console.error('Failed to create mention notification:', notifErr);
+    logger.error('Failed to create mention notification:', notifErr);
   }
 
   res.status(201).json({
@@ -295,6 +315,8 @@ exports.addComment = catchAsync(async (req, res) => {
  */
 exports.getComments = catchAsync(async (req, res) => {
   const { postId } = req.params;
+
+  await access.loadViewable(Post, postId, req.user.id);
 
   const comments = await postService.getComments(postId, req.user.id);
 
@@ -314,6 +336,8 @@ exports.getComments = catchAsync(async (req, res) => {
 exports.getCommentReplies = catchAsync(async (req, res) => {
   const { commentId } = req.params;
 
+  await access.loadViewable(Comment, commentId, req.user.id);
+
   const replies = await postService.getCommentReplies(commentId, req.user.id);
 
   res.status(200).json({
@@ -332,6 +356,8 @@ exports.getCommentReplies = catchAsync(async (req, res) => {
 exports.toggleCommentLike = catchAsync(async (req, res) => {
   const { commentId } = req.params;
   const userId = req.user.id;
+
+  await access.loadViewable(Comment, commentId, userId);
 
   const result = await postService.toggleCommentLike(commentId, userId);
 
@@ -355,7 +381,7 @@ exports.toggleCommentLike = catchAsync(async (req, res) => {
         message: 'liked your comment',
       });
     } catch (notifErr) {
-      console.error('Failed to create comment-like notification:', notifErr);
+      logger.error('Failed to create comment-like notification:', notifErr);
     }
   }
 
@@ -375,6 +401,9 @@ exports.repostPost = catchAsync(async (req, res) => {
   const { postId } = req.params;
   const { caption } = req.body;
   const userId = req.user.id;
+
+  await access.loadViewable(Post, postId, userId);
+  await assertRepostable(Post, postId, userId);
 
   const result = await postService.repostContent(postId, 'post', userId, caption);
 
@@ -397,7 +426,7 @@ exports.repostPost = catchAsync(async (req, res) => {
         message: 'reposted your post',
       });
     } catch (notifErr) {
-      console.error('Failed to create repost notification:', notifErr);
+      logger.error('Failed to create repost notification:', notifErr);
     }
   }
 
@@ -466,6 +495,8 @@ exports.toggleSavePost = catchAsync(async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.id;
 
+  await access.loadViewable(Post, postId, userId);
+
   const post = await Post.exists({ _id: postId });
   if (!post) {
     return res.status(404).json({ success: false, message: 'Post not found' });
@@ -496,6 +527,8 @@ exports.toggleSavePost = catchAsync(async (req, res) => {
 exports.sharePost = catchAsync(async (req, res) => {
   const { postId } = req.params;
 
+  await access.loadViewable(Post, postId, req.user.id);
+
   const post = await Post.findByIdAndUpdate(
     postId,
     { $inc: { shareCount: 1 } },
@@ -521,14 +554,20 @@ exports.sharePost = catchAsync(async (req, res) => {
 exports.getSavedPosts = catchAsync(async (req, res) => {
   const user = await User.findById(req.user.id).select('savedPosts');
 
-  const posts = await Post.find({ _id: { $in: user.savedPosts } })
-    .populate('user', 'username name profilePicture')
-    .populate({
-      path: 'repostOf',
-      populate: { path: 'user', select: 'username name profilePicture' },
-    })
-    .sort({ createdAt: -1 })
-    .lean();
+  // Saved posts from accounts that later went private / blocked me
+  // drop out of the list.
+  const hidden = await access.getHiddenAuthorIds(req.user.id);
+  const posts = access.redactHiddenReposts(
+    await Post.find({ _id: { $in: user.savedPosts }, user: { $nin: hidden } })
+      .populate('user', 'username name profilePicture')
+      .populate({
+        path: 'repostOf',
+        populate: { path: 'user', select: 'username name profilePicture' },
+      })
+      .sort({ createdAt: -1 })
+      .lean(),
+    hidden
+  );
 
   res.status(200).json({
     success: true,

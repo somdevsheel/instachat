@@ -50,7 +50,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ROUTES } from '../../navigation/routes.constants';
-import { getLoginActivity, toggleTwoFactor } from '../../api/User.api';
+import { getLoginActivity, toggleTwoFactor, exportMyData } from '../../api/User.api';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { Linking } from 'react-native';
+import { TERMS_URL, PRIVACY_URL } from '../../constants/legal';
+import { useDispatch } from 'react-redux';
+import api from '../../services/api';
+import { logout } from '../../redux/slices/authSlice';
 
 /* =========================
    HELPER: Format Date
@@ -235,6 +242,7 @@ const LoginActivityModal = ({ visible, onClose }) => {
 ========================= */
 
 const SecuritySettingsScreen = ({ navigation }) => {
+  const dispatch = useDispatch();
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showLoginActivity, setShowLoginActivity] = useState(false);
@@ -269,6 +277,63 @@ const SecuritySettingsScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  /* =========================
+     DOWNLOAD YOUR DATA
+  ========================= */
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const res = await exportMyData();
+      const username = res?.data?.profile?.username || 'me';
+      const date = new Date().toISOString().slice(0, 10);
+      const uri = `${FileSystem.cacheDirectory}instachat-data-${username}-${date}.json`;
+      await FileSystem.writeAsStringAsync(uri, JSON.stringify(res.data, null, 2));
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/json',
+          dialogTitle: 'Save your InstaChat data',
+          UTI: 'public.json',
+        });
+      } else {
+        Alert.alert('Saved', `Your data was saved to:\n${uri}`);
+      }
+    } catch (err) {
+      Alert.alert(
+        'Download failed',
+        err?.response?.data?.message || 'Could not download your data. Please try again.'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  /* =========================
+     LOG OUT OF ALL DEVICES
+  ========================= */
+  const handleLogoutAll = () => {
+    Alert.alert(
+      'Log out of all devices?',
+      "You'll be logged out everywhere, including this device.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.post('/auth/logout-all');
+              dispatch(logout());
+            } catch (err) {
+              Alert.alert('Error', 'Could not log out of all devices. Try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -306,6 +371,13 @@ const SecuritySettingsScreen = ({ navigation }) => {
           onPress={() => setShowLoginActivity(true)}
         />
 
+        <Row
+          icon="log-out-outline"
+          label="Log out of all devices"
+          description="End every session if you think someone else has access"
+          onPress={handleLogoutAll}
+        />
+
         {/* SECTION: Two-Factor Auth */}
         <Text style={styles.sectionTitle}>Two-Factor Authentication</Text>
 
@@ -336,13 +408,26 @@ const SecuritySettingsScreen = ({ navigation }) => {
         <Row
           icon="download-outline"
           label="Download your data"
-          description="Request a copy of your InstaChat data"
-          onPress={() =>
-            Alert.alert(
-              'Coming Soon',
-              'Data download will be available in a future update.'
-            )
+          description={
+            exporting
+              ? 'Preparing your data…'
+              : 'Get a copy of everything InstaChat stores about you'
           }
+          onPress={exporting ? null : handleExport}
+        />
+
+        <Row
+          icon="document-text-outline"
+          label="Privacy Policy"
+          description="What we collect and how it's used"
+          onPress={() => Linking.openURL(PRIVACY_URL)}
+        />
+
+        <Row
+          icon="reader-outline"
+          label="Terms of Use"
+          description="The rules for using InstaChat"
+          onPress={() => Linking.openURL(TERMS_URL)}
         />
 
         <Row

@@ -1,62 +1,44 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/user.model');
+const verifyAuthToken = require('../utils/verifyAuthToken');
 
 /**
  * ======================================================
  * ADMIN AUTH MIDDLEWARE
  * ======================================================
- * - Verifies JWT token
+ * - Verifies JWT token (same rules as regular auth)
  * - Checks user has admin or superadmin role
  * - Attaches user to request
  */
 
 exports.adminProtect = async (req, res, next) => {
-  try {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith('Bearer')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized - No token provided',
-      });
-    }
-
-    const token = auth.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    const user = await User.findById(decoded.id).select('-password');
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Check admin role
-    if (!user.role || !['admin', 'superadmin'].includes(user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - Admin privileges required',
-      });
-    }
-
-    // Check if admin is banned/suspended
-    if (user.isBanned || user.isSuspended) {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account has been restricted',
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error('Admin auth error:', err.message);
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({
       success: false,
-      message: 'Authentication failed',
+      message: 'Not authorized - No token provided',
     });
   }
+
+  let user;
+  try {
+    user = await verifyAuthToken(auth);
+  } catch (err) {
+    return res.status(err.statusCode || 401).json({
+      success: false,
+      message: err.statusCode === 403
+        ? 'Your account has been restricted'
+        : 'Authentication failed',
+    });
+  }
+
+  if (!user.role || !['admin', 'superadmin'].includes(user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied - Admin privileges required',
+    });
+  }
+
+  req.user = user;
+  next();
 };
 
 /**

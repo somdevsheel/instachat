@@ -39,7 +39,10 @@ export const initSocket = () => {
 
     const s = SocketIO.io(SOCKET_URL, {
       auth: { token },
-      transports: ['polling', 'websocket'],
+      // WebSocket only: with several server processes, long-polling
+      // requests would land on different processes and break the
+      // session (that would need sticky load balancing).
+      transports: ['websocket'],
       upgrade: true,
       autoConnect: true,
       reconnection: true,

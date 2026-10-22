@@ -63,8 +63,20 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
   );
 
   const user = post?.user || {};
-  const media = post?.media || {};
+
+  // Reposts have no media/caption of their own: show the original's,
+  // with a "Reposted from" line. The server sets repostUnavailable when
+  // the original's author is private/blocked for this viewer.
+  const original = post?.repostOf || null;
+  const isReelRepost = !!original && post?.repostOfModel === 'Reel';
+  const media =
+    (original
+      ? isReelRepost
+        ? { type: 'video', variants: { original: original.videoUrl } }
+        : original.media
+      : post?.media) || {};
   const mediaUrl = media?.variants?.original;
+  const caption = original ? original.caption : post?.caption;
 
   /* =========================
      LIKE STATE (SOURCE OF TRUTH)
@@ -271,7 +283,13 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
 
   const isOwnPost = user._id === currentUserId;
 
-  if (!mediaUrl || isDeleting) return null;
+  const openOriginalProfile = () => {
+    const username = original?.user?.username;
+    if (username) navigation.navigate(ROUTES.USER_PROFILE, { username });
+  };
+
+  // Nothing to show at all (no media, no text, not a repost).
+  if (isDeleting || (!mediaUrl && !caption && !post?.repostUnavailable)) return null;
 
   return (
     <View style={styles.container}>
@@ -313,7 +331,33 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
         </TouchableOpacity>
       </View>
 
+      {/* REPOST ATTRIBUTION */}
+      {!!original && (
+        <TouchableOpacity style={styles.repostBanner} onPress={openOriginalProfile}>
+          <Ionicons name="repeat" size={14} color={colors.textSecondary} />
+          <Text style={styles.repostText}>
+            Reposted from{' '}
+            <Text style={styles.repostUser}>@{original.user?.username || 'user'}</Text>
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {post.repostUnavailable && (
+        <View style={styles.unavailable}>
+          <Ionicons name="lock-closed-outline" size={22} color={colors.textFaint} />
+          <Text style={styles.unavailableText}>
+            This content isn't available. The account may be private or no longer exists.
+          </Text>
+        </View>
+      )}
+
+      {/* TEXT-ONLY POST */}
+      {!mediaUrl && !!caption && !post.repostUnavailable && (
+        <Text style={styles.textOnly}>{caption}</Text>
+      )}
+
       {/* MEDIA */}
+      {!!mediaUrl && (
       <Pressable onPress={handleDoubleTap}>
         <View style={styles.mediaContainer}>
           {media.type === 'image' && (
@@ -359,6 +403,7 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
           )}
         </View>
       </Pressable>
+      )}
 
       {/* ACTIONS */}
       <View style={styles.actions}>
@@ -407,12 +452,12 @@ const FeedPost = ({ post, isVisible = true, onPostDeleted }) => {
           {formatCount(likesCount)} {likesCount === 1 ? 'like' : 'likes'}
         </Text>
 
-        {!!post.caption && (
+        {!!caption && !!mediaUrl && (
           <Text style={styles.caption}>
             <Text style={styles.username}>
-              {user.username}{' '}
+              {(original?.user?.username || user.username)}{' '}
             </Text>
-            {post.caption}
+            {caption}
           </Text>
         )}
 
@@ -558,6 +603,41 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 11,
     marginTop: 1,
+  },
+
+  repostBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  repostText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  repostUser: {
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  unavailable: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    backgroundColor: colors.surfaceRaised,
+  },
+  unavailableText: {
+    color: colors.textFaint,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  textOnly: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 22,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
 
   mediaContainer: {

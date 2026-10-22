@@ -1,5 +1,6 @@
 const { Expo } = require('expo-server-sdk');
 const User = require('../models/user.model');
+const logger = require('../utils/logger');
 
 const expo = new Expo();
 
@@ -40,7 +41,7 @@ exports.sendPushToUsers = async (userIds, { title, body, data = {} }) => {
       const receipts = await expo.sendPushNotificationsAsync(chunk);
       tickets.push(...receipts);
     } catch (err) {
-      console.error('Push send error:', err.message);
+      logger.error('Push send error:', err.message);
     }
   }
 
@@ -84,7 +85,7 @@ function scheduleReceiptCheck(tokens, tickets) {
         );
       }
     } catch (err) {
-      console.error('Push receipt check error:', err.message);
+      logger.error('Push receipt check error:', err.message);
     }
   }, 20000);
 }

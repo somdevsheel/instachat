@@ -1,11 +1,13 @@
 const nodemailer = require('nodemailer');
+const logger = require('./logger');
 
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
-      secure: false, // TLS
+      // 465 = implicit TLS; other ports (587) upgrade via STARTTLS.
+      secure: Number(process.env.SMTP_PORT) === 465,
       auth: {
         user: process.env.SMTP_EMAIL,
         pass: process.env.SMTP_PASSWORD,
@@ -20,7 +22,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
       html,
     });
   } catch (error) {
-    console.error('Email send failed:', error);
+    logger.error('Email send failed:', error);
     throw new Error('Email could not be sent');
   }
 };

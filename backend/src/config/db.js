@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 /**
  * Database Configuration Strategy
@@ -12,7 +13,7 @@ const connectDB = async () => {
   try {
     // 1. Validation: Ensure the URI exists before attempting connection
     if (!process.env.MONGO_URI) {
-      console.error('❌ FATAL: MONGO_URI is missing in .env file');
+      logger.error('❌ FATAL: MONGO_URI is missing in .env file');
       process.exit(1);
     }
 
@@ -29,10 +30,10 @@ const connectDB = async () => {
     // 3. Establish Connection
     const conn = await mongoose.connect(process.env.MONGO_URI, options);
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    logger.info(`✅ MongoDB Connected: ${conn.connection.host}`);
 
   } catch (error) {
-    console.error(`❌ Database Connection Error: ${error.message}`);
+    logger.error(`❌ Database Connection Error: ${error.message}`);
     // Exit with failure code (1) to trigger restart in Docker/PM2
     process.exit(1);
   }
@@ -41,15 +42,15 @@ const connectDB = async () => {
 // --- Connection Event Listeners (For Monitoring) ---
 
 mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️ MongoDB Disconnected. Waiting for reconnection...');
+  logger.warn('⚠️ MongoDB Disconnected. Waiting for reconnection...');
 });
 
 mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB Reconnected.');
+  logger.info('✅ MongoDB Reconnected.');
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error(`❌ MongoDB Runtime Error: ${err.message}`);
+  logger.error(`❌ MongoDB Runtime Error: ${err.message}`);
 });
 
 module.exports = connectDB;

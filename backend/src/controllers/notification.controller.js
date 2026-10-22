@@ -1,11 +1,12 @@
 const notificationService = require('../services/notification.service');
 const catchAsync = require('../utils/catchAsync');
+const logger = require('../utils/logger');
 
 /**
  * Get user notifications
  */
 exports.getNotifications = catchAsync(async (req, res) => {
-  console.log('📢 getNotifications called'); // ✅ Debug log
+  logger.debug('📢 getNotifications called'); // ✅ Debug log
   const userId = req.user.id;
   const { page = 1, limit = 20 } = req.query;
 
@@ -26,11 +27,11 @@ exports.getNotifications = catchAsync(async (req, res) => {
  * Get unread count
  */
 exports.getUnreadCount = catchAsync(async (req, res) => {
-  console.log('📢 getUnreadCount called for user:', req.user.id); // ✅ Debug log
+  logger.debug('📢 getUnreadCount called for user:', req.user.id); // ✅ Debug log
   const userId = req.user.id;
   const count = await notificationService.getUnreadCount(userId);
 
-  console.log('📢 Unread count:', count); // ✅ Debug log
+  logger.debug('📢 Unread count:', count); // ✅ Debug log
 
   res.status(200).json({
     success: true,

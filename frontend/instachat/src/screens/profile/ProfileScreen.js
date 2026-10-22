@@ -19,6 +19,7 @@ import { ROUTES } from '../../navigation/routes.constants';
 import { loadUser } from '../../redux/slices/authSlice';
 import usePullToRefresh from '../../hooks/usePullToRefresh';
 import colors, { gradients } from '../../theme/colors';
+import PostGridTile from '../../components/molecules/PostGridTile';
 
 const { width } = Dimensions.get('window');
 const IMAGE_SIZE = (width - 4) / 3;
@@ -74,24 +75,14 @@ const ProfileScreen = ({ navigation }) => {
      RENDER GRID ITEM
   ========================= */
   const renderGridItem = ({ item, index }) => (
-    <TouchableOpacity
+    <PostGridTile
+      item={item}
       style={[
         styles.gridItem,
         index % 3 !== 2 && styles.gridItemMargin,
       ]}
-      activeOpacity={0.9}
       onPress={() => navigation.navigate(ROUTES.POST_DETAIL, { postId: item._id })}
-    >
-      <Image
-        source={{ uri: item.media?.variants?.original }}
-        style={styles.gridImage}
-      />
-      {item.media?.type === 'video' && (
-        <View style={styles.videoIndicator}>
-          <Ionicons name="play" size={18} color="#fff" />
-        </View>
-      )}
-    </TouchableOpacity>
+    />
   );
 
   return (

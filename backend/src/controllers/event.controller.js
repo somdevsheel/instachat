@@ -1,5 +1,7 @@
 const Event = require('../models/Event');
 const catchAsync = require('../utils/catchAsync');
+const getPagination = require('../utils/pagination');
+const str = require('../utils/str');
 
 /**
  * POST /api/v1/events
@@ -8,7 +10,7 @@ exports.createEvent = catchAsync(async (req, res) => {
   const { name, description, date, location } = req.body;
   const userId = req.user.id;
 
-  if (!name || !name.trim()) {
+  if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Event name is required' });
   }
   if (!date || isNaN(new Date(date).getTime())) {
@@ -17,9 +19,9 @@ exports.createEvent = catchAsync(async (req, res) => {
 
   const event = await Event.create({
     name: name.trim(),
-    description: description?.trim() || '',
+    description: str(description) || '',
     date: new Date(date),
-    location: location?.trim() || '',
+    location: str(location) || '',
     host: userId,
     attendees: [userId],
   });
@@ -35,9 +37,12 @@ exports.createEvent = catchAsync(async (req, res) => {
 exports.getEvents = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
+  const { limit, skip } = getPagination(req.query);
   const events = await Event.find()
     .populate('host', 'username profilePicture')
     .sort({ date: 1 })
+    .skip(skip)
+    .limit(limit)
     .lean();
 
   const withRsvp = events.map((e) => ({

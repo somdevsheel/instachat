@@ -1,2466 +1,20 @@
-// const User = require('../models/user.model');
-// const Post = require('../models/Post');
-// const notificationService = require('../services/notification.service');
-// const { getUserStatus } = require('../utils/userStatus.util');
-
-// /**
-//  * CDN BASE URL
-//  */
-// const CDN_BASE_URL =
-//   process.env.CDN_BASE_URL ||
-//   `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
-
-// /* ================================
-//    🔍 SEARCH USERS
-// ================================ */
-// exports.searchUsers = async (req, res) => {
-//   try {
-//     const q = (req.query.q || '').trim();
-
-//     if (!q) {
-//       return res.status(200).json({ success: true, data: [] });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const users = await User.find({
-//       username: { $regex: q, $options: 'i' },
-//       _id: { $ne: req.user.id },
-//     }).select('username profilePicture lastSeen');
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (user) => {
-//         const status = await getUserStatus(user);
-//         return {
-//           _id: user._id,
-//           username: user.username,
-//           profilePicture: user.profilePicture,
-//           isFollowing: followingSet.has(user._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Search users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to search users',
-//     });
-//   }
-// };
-
-// /* ================================
-//    👤 GET USER PROFILE (PUBLIC)
-// ================================ */
-// exports.getUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findOne({
-//       username: req.params.username,
-//     })
-//       .select('-password')
-//       .populate('followers', '_id')
-//       .populate('following', '_id');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const posts = await Post.find({ user: user._id })
-//       .sort({ createdAt: -1 })
-//       .select('media user createdAt')
-//       .lean();
-
-//     const currentUser = await User.findById(req.user.id).select(
-//       'following followers'
-//     );
-
-//     const isFollowing = currentUser.following.some(
-//       id => id.toString() === user._id.toString()
-//     );
-
-//     const theyFollowMe = user.following.some(
-//       f => f._id.toString() === req.user.id.toString()
-//     );
-
-//     const canMessage = isFollowing || theyFollowMe;
-//     const status = await getUserStatus(user);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         name: user.name || '',
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         postsCount: posts.length,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//         isFollowing,
-//         canMessage,
-//         online: status.online,
-//         lastSeen: status.lastSeen,
-//         posts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load profile',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ✏️ UPDATE PROFILE
-// ================================ */
-// exports.updateUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { username, bio, avatarKey } = req.body;
-
-//     if (username) user.username = username.trim();
-//     if (bio !== undefined) user.bio = bio.trim();
-
-//     if (avatarKey) {
-//       const newUrl = `${CDN_BASE_URL}/${avatarKey}`;
-//       if (user.profilePicture !== newUrl) {
-//         user.profilePicture = newUrl;
-//       }
-//     }
-
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         email: user.email,
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Profile update failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔐 UPDATE PASSWORD (ADD)
-// ================================ */
-// // exports.updatePassword = async (req, res) => {
-// //   try {
-// //     const { currentPassword, newPassword } = req.body;
-
-// //     if (!currentPassword || !newPassword) {
-// //       return res.status(400).json({
-// //         success: false,
-// //         message: 'Current password and new password are required',
-// //       });
-// //     }
-
-// //     if (newPassword.length < 8) {
-// //       return res.status(400).json({
-// //         success: false,
-// //         message: 'New password must be at least 8 characters',
-// //       });
-// //     }
-
-// //     const user = await User.findById(req.user.id).select('+password');
-
-// //     if (!user) {
-// //       return res.status(404).json({
-// //         success: false,
-// //         message: 'User not found',
-// //       });
-// //     }
-
-// //     const isMatch = await user.isPasswordMatch(currentPassword);
-// //     if (!isMatch) {
-// //       return res.status(401).json({
-// //         success: false,
-// //         message: 'Current password is incorrect',
-// //       });
-// //     }
-
-// //     user.password = newPassword;
-
-// //       // prevent immediate JWT invalidation during this request
-// //     user.passwordChangedAt = Date.now();
-
-// //     await user.save();
-// //  // triggers passwordChangedAt → logout all devices
-
-// //     return res.status(200).json({
-// //       success: true,
-// //       message:
-// //         'Password updated successfully. Please login again on all devices.',
-// //     });
-// //   } catch (err) {
-// //     console.error('Update password error:', err);
-// //     return res.status(500).json({
-// //       success: false,
-// //       message: 'Failed to update password',
-// //     });
-// //   }
-// // };
-
-// /* ================================
-//    🔐 UPDATE PASSWORD (DEBUG MODE)
-// ================================ */
-// exports.updatePassword = async (req, res) => {
-//   try {
-//     console.log('================ PASSWORD DEBUG START ================');
-
-//     console.log('➡️ Controller HIT');
-//     console.log('➡️ req.user.id:', req.user?.id);
-
-//     console.log('➡️ Raw body:', req.body);
-//     console.log(
-//       '➡️ currentPassword:',
-//       `"${req.body.currentPassword}"`,
-//       'length:',
-//       req.body.currentPassword?.length
-//     );
-//     console.log(
-//       '➡️ newPassword:',
-//       `"${req.body.newPassword}"`,
-//       'length:',
-//       req.body.newPassword?.length
-//     );
-
-//     // FORCE TRIM (DEBUG)
-//     const currentPassword = req.body.currentPassword?.trim();
-//     const newPassword = req.body.newPassword?.trim();
-
-//     console.log(
-//       '➡️ currentPassword (trimmed):',
-//       `"${currentPassword}"`,
-//       'length:',
-//       currentPassword?.length
-//     );
-//     console.log(
-//       '➡️ newPassword (trimmed):',
-//       `"${newPassword}"`,
-//       'length:',
-//       newPassword?.length
-//     );
-
-//     if (!currentPassword || !newPassword) {
-//       console.log('❌ Missing password fields');
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Passwords missing',
-//       });
-//     }
-
-//     const user = await require('../models/user.model')
-//       .findById(req.user.id)
-//       .select('+password');
-
-//     console.log('➡️ User fetched:', !!user);
-//     console.log(
-//       '➡️ Stored hashed password:',
-//       user.password
-//     );
-
-//     console.log('➡️ Comparing passwords with bcrypt...');
-//     const isMatch = await user.isPasswordMatch(currentPassword);
-
-//     console.log('➡️ bcrypt.compare result:', isMatch);
-
-//     if (!isMatch) {
-//       console.log('❌ PASSWORD MISMATCH');
-//       return res.status(401).json({
-//         success: false,
-//         message: 'Current password incorrect',
-//       });
-//     }
-
-//     console.log('✅ PASSWORD MATCHED');
-
-//     user.password = newPassword;
-//     await user.save();
-
-//     console.log('✅ Password SAVED');
-//     console.log('➡️ passwordChangedAt:', user.passwordChangedAt);
-
-    
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Password updated successfully',
-//     });
-//   } catch (err) {
-//     console.error('🔥 PASSWORD UPDATE ERROR:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Password update failed',
-//     });
-//   }
-// };
-
-
-// /* ================================
-//    🔄 FOLLOW / UNFOLLOW
-// ================================ */
-// // exports.followUser = async (req, res) => {
-// //   try {
-// //     const me = await User.findById(req.user.id);
-// //     const other = await User.findById(req.params.id);
-
-// //     if (!me || !other) {
-// //       return res.status(404).json({
-// //         success: false,
-// //         message: 'User not found',
-// //       });
-// //     }
-
-// //     const isFollowing = me.following.includes(other._id);
-
-// //     if (isFollowing) {
-// //       me.following.pull(other._id);
-// //       other.followers.pull(me._id);
-// //     } else {
-// //       me.following.push(other._id);
-// //       other.followers.push(me._id);
-
-// //       try {
-// //         await notificationService.createNotification({
-// //           recipient: other._id,
-// //           sender: me._id,
-// //           type: 'follow',
-// //           message: 'started following you',
-// //         });
-// //       } catch (err) {
-// //         console.error('Notification error:', err);
-// //       }
-// //     }
-
-// //     await me.save();
-// //     await other.save();
-
-// //     return res.status(200).json({
-// //       success: true,
-// //       following: !isFollowing,
-// //       followersCount: other.followers.length,
-// //     });
-// //   } catch (err) {
-// //     console.error('Follow user error:', err);
-// //     return res.status(500).json({
-// //       success: false,
-// //       message: 'Follow action failed',
-// //     });
-// //   }
-// // };
-
-// exports.followUser = async (req, res) => {
-//   try {
-//     const myId = req.user.id;
-//     const targetId = req.params.id;
-
-//     if (myId === targetId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot follow yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(myId).select('following');
-
-//     const isFollowing = me.following.includes(targetId);
-
-//     if (isFollowing) {
-//       // UNFOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $pull: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $pull: { followers: myId },
-//       });
-//     } else {
-//       // FOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $addToSet: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $addToSet: { followers: myId },
-//       });
-
-//       // Notification (safe)
-//       try {
-//         await notificationService.createNotification({
-//           recipient: targetId,
-//           sender: myId,
-//           type: 'follow',
-//           message: 'started following you',
-//         });
-//       } catch (err) {
-//         console.error('Notification error:', err);
-//       }
-//     }
-
-//     const updatedTarget = await User.findById(targetId).select('followers');
-
-//     return res.status(200).json({
-//       success: true,
-//       following: !isFollowing,
-//       followersCount: updatedTarget.followers.length,
-//     });
-//   } catch (err) {
-//     console.error('Follow user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Follow action failed',
-//     });
-//   }
-// };
-
-
-// /* ================================
-//    👥 FOLLOWERS / FOLLOWING LIST
-// ================================ */
-// exports.getFollowList = async (req, res) => {
-//   try {
-//     const { id, type } = req.params;
-
-//     if (!['followers', 'following'].includes(type)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Invalid follow type',
-//       });
-//     }
-
-//     const user = await User.findById(id)
-//       .populate(type, 'username profilePicture lastSeen')
-//       .select(type);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const listWithStatus = await Promise.all(
-//       user[type].map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: followingSet.has(u._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: listWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Get follow list error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load follow list',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ⭐ SUGGESTED USERS
-// ================================ */
-// exports.getSuggestedUsers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id);
-
-//     const users = await User.find({
-//       _id: { $nin: [req.user.id, ...me.following] },
-//     })
-//       .select('username profilePicture lastSeen')
-//       .limit(20);
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: false,
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Suggested users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load suggestions',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🤝 MUTUAL FOLLOWERS
-// ================================ */
-// exports.getMutualFollowers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id)
-//       .populate('followers', 'username profilePicture lastSeen')
-//       .populate('following', '_id');
-
-//     const followingSet = new Set(
-//       me.following.map(u => u._id.toString())
-//     );
-
-//     const mutuals = await Promise.all(
-//       me.followers
-//         .filter(f => followingSet.has(f._id.toString()))
-//         .map(async (f) => {
-//           const status = await getUserStatus(f);
-//           return {
-//             _id: f._id,
-//             username: f.username,
-//             profilePicture: f.profilePicture,
-//             isFollowing: true,
-//             online: status.online,
-//             lastSeen: status.lastSeen,
-//           };
-//         })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: mutuals,
-//     });
-//   } catch (err) {
-//     console.error('Mutual followers error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load mutual followers',
-//     });
-//   }
-// };
-
-
-
-
-
-
-
-
-// const User = require('../models/user.model');
-// const Post = require('../models/Post');
-// const notificationService = require('../services/notification.service');
-// const { getUserStatus } = require('../utils/userStatus.util');
-
-// /**
-//  * CDN BASE URL
-//  */
-// const CDN_BASE_URL =
-//   process.env.CDN_BASE_URL ||
-//   `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
-
-// /* ================================
-//    🔍 SEARCH USERS
-// ================================ */
-// exports.searchUsers = async (req, res) => {
-//   try {
-//     const q = (req.query.q || '').trim();
-
-//     if (!q) {
-//       return res.status(200).json({ success: true, data: [] });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const users = await User.find({
-//       username: { $regex: q, $options: 'i' },
-//       _id: { $ne: req.user.id },
-//     }).select('username profilePicture lastSeen');
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (user) => {
-//         const status = await getUserStatus(user);
-//         return {
-//           _id: user._id,
-//           username: user.username,
-//           profilePicture: user.profilePicture,
-//           isFollowing: followingSet.has(user._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Search users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to search users',
-//     });
-//   }
-// };
-
-// /* ================================
-//    👤 GET USER PROFILE (PUBLIC)
-// ================================ */
-// exports.getUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findOne({
-//       username: req.params.username,
-//     })
-//       .select('-password')
-//       .populate('followers', '_id')
-//       .populate('following', '_id');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const posts = await Post.find({ user: user._id })
-//       .sort({ createdAt: -1 })
-//       .select('media user createdAt')
-//       .lean();
-
-//     const currentUser = await User.findById(req.user.id).select(
-//       'following followers'
-//     );
-
-//     const isFollowing = currentUser.following.some(
-//       id => id.toString() === user._id.toString()
-//     );
-
-//     const theyFollowMe = user.following.some(
-//       f => f._id.toString() === req.user.id.toString()
-//     );
-
-//     const canMessage = isFollowing || theyFollowMe;
-//     const status = await getUserStatus(user);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         name: user.name || '',
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         postsCount: posts.length,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//         isFollowing,
-//         canMessage,
-//         online: status.online,
-//         lastSeen: status.lastSeen,
-//         posts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load profile',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ✏️ UPDATE PROFILE
-// ================================ */
-// exports.updateUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { username, bio, avatarKey } = req.body;
-
-//     if (username) user.username = username.trim();
-//     if (bio !== undefined) user.bio = bio.trim();
-
-//     if (avatarKey) {
-//       const newUrl = `${CDN_BASE_URL}/${avatarKey}`;
-//       if (user.profilePicture !== newUrl) {
-//         user.profilePicture = newUrl;
-//       }
-//     }
-
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         email: user.email,
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Profile update failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔐 UPDATE PASSWORD
-// ================================ */
-// exports.updatePassword = async (req, res) => {
-//   try {
-//     const currentPassword = req.body.currentPassword?.trim();
-//     const newPassword = req.body.newPassword?.trim();
-
-//     if (!currentPassword || !newPassword) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Current password and new password are required',
-//       });
-//     }
-
-//     if (newPassword.length < 8) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'New password must be at least 8 characters',
-//       });
-//     }
-
-//     const user = await User.findById(req.user.id).select('+password');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const isMatch = await user.isPasswordMatch(currentPassword);
-//     if (!isMatch) {
-//       return res.status(401).json({
-//         success: false,
-//         message: 'Current password is incorrect',
-//       });
-//     }
-
-//     user.password = newPassword;
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Password updated successfully',
-//     });
-//   } catch (err) {
-//     console.error('Update password error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update password',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== ACCOUNT SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    📋 GET ACCOUNT INFO
-// ================================ */
-// exports.getAccountInfo = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select(
-//       'username email phone name gender dateOfBirth profilePicture'
-//     );
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         username: user.username,
-//         email: user.email,
-//         phone: user.phone || '',
-//         name: user.name || '',
-//         gender: user.gender || '',
-//         dateOfBirth: user.dateOfBirth || null,
-//         profilePicture: user.profilePicture || '',
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get account info error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load account info',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ✏️ UPDATE ACCOUNT INFO
-// ================================ */
-// exports.updateAccountInfo = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { username, email, phone, name, gender, dateOfBirth } = req.body;
-
-//     // Username uniqueness check
-//     if (username && username.trim().toLowerCase() !== user.username) {
-//       const existing = await User.findOne({
-//         username: username.trim().toLowerCase(),
-//       });
-//       if (existing) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Username is already taken',
-//         });
-//       }
-//       user.username = username.trim().toLowerCase();
-//     }
-
-//     // Email uniqueness check
-//     if (email && email.trim().toLowerCase() !== user.email) {
-//       const existing = await User.findOne({
-//         email: email.trim().toLowerCase(),
-//       });
-//       if (existing) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Email is already in use',
-//         });
-//       }
-//       user.email = email.trim().toLowerCase();
-//     }
-
-//     if (phone !== undefined) user.phone = phone.trim();
-//     if (name !== undefined) user.name = name.trim();
-//     if (gender !== undefined) user.gender = gender;
-//     if (dateOfBirth !== undefined) {
-//       user.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
-//     }
-
-//     await user.save({ validateBeforeSave: true });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Account updated successfully',
-//       data: {
-//         username: user.username,
-//         email: user.email,
-//         phone: user.phone,
-//         name: user.name,
-//         gender: user.gender,
-//         dateOfBirth: user.dateOfBirth,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update account info error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update account info',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== PRIVACY SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    🔒 GET PRIVACY SETTINGS
-// ================================ */
-// exports.getPrivacySettings = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select(
-//       'isPrivate activityStatusVisible showReadReceipts'
-//     );
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         isPrivate: user.isPrivate,
-//         activityStatusVisible: user.activityStatusVisible,
-//         showReadReceipts: user.showReadReceipts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get privacy settings error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load privacy settings',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔒 UPDATE PRIVACY SETTINGS
-// ================================ */
-// exports.updatePrivacySettings = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { isPrivate, activityStatusVisible, showReadReceipts } = req.body;
-
-//     if (typeof isPrivate === 'boolean') user.isPrivate = isPrivate;
-//     if (typeof activityStatusVisible === 'boolean')
-//       user.activityStatusVisible = activityStatusVisible;
-//     if (typeof showReadReceipts === 'boolean')
-//       user.showReadReceipts = showReadReceipts;
-
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Privacy settings updated',
-//       data: {
-//         isPrivate: user.isPrivate,
-//         activityStatusVisible: user.activityStatusVisible,
-//         showReadReceipts: user.showReadReceipts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update privacy settings error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update privacy settings',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🚫 BLOCK USER
-// ================================ */
-// exports.blockUser = async (req, res) => {
-//   try {
-//     const targetId = req.params.id;
-
-//     if (targetId === req.user.id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot block yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(req.user.id);
-
-//     const isBlocked = me.blockedUsers.includes(targetId);
-
-//     if (isBlocked) {
-//       // UNBLOCK
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { blockedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         blocked: false,
-//         message: `Unblocked @${targetUser.username}`,
-//       });
-//     } else {
-//       // BLOCK — also unfollow each other
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $addToSet: { blockedUsers: targetId },
-//         $pull: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $pull: { followers: req.user.id, following: req.user.id },
-//       });
-
-//       // Remove target from my followers too
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { followers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         blocked: true,
-//         message: `Blocked @${targetUser.username}`,
-//       });
-//     }
-//   } catch (err) {
-//     console.error('Block user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Block action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🚫 GET BLOCKED USERS
-// ================================ */
-// exports.getBlockedUsers = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id)
-//       .populate('blockedUsers', 'username profilePicture')
-//       .select('blockedUsers');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.blockedUsers || [],
-//     });
-//   } catch (err) {
-//     console.error('Get blocked users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load blocked users',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔇 MUTE / UNMUTE USER
-// ================================ */
-// exports.muteUser = async (req, res) => {
-//   try {
-//     const targetId = req.params.id;
-
-//     if (targetId === req.user.id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot mute yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(req.user.id);
-//     const isMuted = me.mutedUsers.includes(targetId);
-
-//     if (isMuted) {
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { mutedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         muted: false,
-//         message: `Unmuted @${targetUser.username}`,
-//       });
-//     } else {
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $addToSet: { mutedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         muted: true,
-//         message: `Muted @${targetUser.username}`,
-//       });
-//     }
-//   } catch (err) {
-//     console.error('Mute user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Mute action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔇 GET MUTED USERS
-// ================================ */
-// exports.getMutedUsers = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id)
-//       .populate('mutedUsers', 'username profilePicture')
-//       .select('mutedUsers');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.mutedUsers || [],
-//     });
-//   } catch (err) {
-//     console.error('Get muted users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load muted users',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== SECURITY SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    🛡️ GET LOGIN ACTIVITY
-// ================================ */
-// exports.getLoginActivity = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select('loginActivity');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.loginActivity || [],
-//     });
-//   } catch (err) {
-//     console.error('Get login activity error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load login activity',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🛡️ TOGGLE TWO-FACTOR AUTH
-// ================================ */
-// exports.toggleTwoFactor = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     user.twoFactorEnabled = !user.twoFactorEnabled;
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       twoFactorEnabled: user.twoFactorEnabled,
-//       message: user.twoFactorEnabled
-//         ? 'Two-factor authentication enabled'
-//         : 'Two-factor authentication disabled',
-//     });
-//   } catch (err) {
-//     console.error('Toggle 2FA error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update two-factor setting',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🗑️ DELETE ACCOUNT
-// ================================ */
-// exports.deleteAccount = async (req, res) => {
-//   try {
-//     const { password } = req.body;
-
-//     if (!password) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Password is required to delete account',
-//       });
-//     }
-
-//     const user = await User.findById(req.user.id).select('+password');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const isMatch = await user.isPasswordMatch(password);
-//     if (!isMatch) {
-//       return res.status(401).json({
-//         success: false,
-//         message: 'Incorrect password',
-//       });
-//     }
-
-//     // Remove user from all followers/following lists
-//     await User.updateMany(
-//       { followers: user._id },
-//       { $pull: { followers: user._id } }
-//     );
-//     await User.updateMany(
-//       { following: user._id },
-//       { $pull: { following: user._id } }
-//     );
-
-//     // Delete user's posts
-//     await Post.deleteMany({ user: user._id });
-
-//     // Delete the user
-//     await User.findByIdAndDelete(user._id);
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Account deleted successfully',
-//     });
-//   } catch (err) {
-//     console.error('Delete account error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to delete account',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔄 FOLLOW / UNFOLLOW
-// ================================ */
-// exports.followUser = async (req, res) => {
-//   try {
-//     const myId = req.user.id;
-//     const targetId = req.params.id;
-
-//     if (myId === targetId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot follow yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(myId).select('following');
-
-//     const isFollowing = me.following.includes(targetId);
-
-//     if (isFollowing) {
-//       // UNFOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $pull: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $pull: { followers: myId },
-//       });
-//     } else {
-//       // FOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $addToSet: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $addToSet: { followers: myId },
-//       });
-
-//       // Notification (safe)
-//       try {
-//         await notificationService.createNotification({
-//           recipient: targetId,
-//           sender: myId,
-//           type: 'follow',
-//           message: 'started following you',
-//         });
-//       } catch (err) {
-//         console.error('Notification error:', err);
-//       }
-//     }
-
-//     const updatedTarget = await User.findById(targetId).select('followers');
-
-//     return res.status(200).json({
-//       success: true,
-//       following: !isFollowing,
-//       followersCount: updatedTarget.followers.length,
-//     });
-//   } catch (err) {
-//     console.error('Follow user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Follow action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    👥 FOLLOWERS / FOLLOWING LIST
-// ================================ */
-// exports.getFollowList = async (req, res) => {
-//   try {
-//     const { id, type } = req.params;
-
-//     if (!['followers', 'following'].includes(type)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Invalid follow type',
-//       });
-//     }
-
-//     const user = await User.findById(id)
-//       .populate(type, 'username profilePicture lastSeen')
-//       .select(type);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const listWithStatus = await Promise.all(
-//       user[type].map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: followingSet.has(u._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: listWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Get follow list error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load follow list',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ⭐ SUGGESTED USERS
-// ================================ */
-// exports.getSuggestedUsers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id);
-
-//     const users = await User.find({
-//       _id: { $nin: [req.user.id, ...me.following] },
-//     })
-//       .select('username profilePicture lastSeen')
-//       .limit(20);
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: false,
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Suggested users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load suggestions',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🤝 MUTUAL FOLLOWERS
-// ================================ */
-// exports.getMutualFollowers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id)
-//       .populate('followers', 'username profilePicture lastSeen')
-//       .populate('following', '_id');
-
-//     const followingSet = new Set(
-//       me.following.map(u => u._id.toString())
-//     );
-
-//     const mutuals = await Promise.all(
-//       me.followers
-//         .filter(f => followingSet.has(f._id.toString()))
-//         .map(async (f) => {
-//           const status = await getUserStatus(f);
-//           return {
-//             _id: f._id,
-//             username: f.username,
-//             profilePicture: f.profilePicture,
-//             isFollowing: true,
-//             online: status.online,
-//             lastSeen: status.lastSeen,
-//           };
-//         })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: mutuals,
-//     });
-//   } catch (err) {
-//     console.error('Mutual followers error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load mutual followers',
-//     });
-//   }
-// };
-
-
-
-
-
-
-
-
-// const User = require('../models/user.model');
-// const Post = require('../models/Post');
-// const notificationService = require('../services/notification.service');
-// const { getUserStatus } = require('../utils/userStatus.util');
-
-// /**
-//  * CDN BASE URL
-//  */
-// const CDN_BASE_URL =
-//   process.env.CDN_BASE_URL ||
-//   `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
-
-// /* ================================
-//    🔍 SEARCH USERS
-// ================================ */
-// exports.searchUsers = async (req, res) => {
-//   try {
-//     const q = (req.query.q || '').trim();
-
-//     if (!q) {
-//       return res.status(200).json({ success: true, data: [] });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const users = await User.find({
-//       username: { $regex: q, $options: 'i' },
-//       _id: { $ne: req.user.id },
-//     }).select('username profilePicture lastSeen');
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (user) => {
-//         const status = await getUserStatus(user);
-//         return {
-//           _id: user._id,
-//           username: user.username,
-//           profilePicture: user.profilePicture,
-//           isFollowing: followingSet.has(user._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Search users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to search users',
-//     });
-//   }
-// };
-
-// /* ================================
-//    👤 GET USER PROFILE (PUBLIC)
-// ================================ */
-// exports.getUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findOne({
-//       username: req.params.username,
-//     })
-//       .select('-password')
-//       .populate('followers', '_id')
-//       .populate('following', '_id');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const posts = await Post.find({ user: user._id })
-//       .sort({ createdAt: -1 })
-//       .select('media user createdAt')
-//       .lean();
-
-//     const currentUser = await User.findById(req.user.id).select(
-//       'following followers'
-//     );
-
-//     const isFollowing = currentUser.following.some(
-//       id => id.toString() === user._id.toString()
-//     );
-
-//     const theyFollowMe = user.following.some(
-//       f => f._id.toString() === req.user.id.toString()
-//     );
-
-//     const canMessage = isFollowing || theyFollowMe;
-//     const status = await getUserStatus(user);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         name: user.name || '',
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         postsCount: posts.length,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//         isFollowing,
-//         canMessage,
-//         online: status.online,
-//         lastSeen: status.lastSeen,
-//         posts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load profile',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ✏️ UPDATE PROFILE
-// ================================ */
-// exports.updateUserProfile = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { username, bio, avatarKey } = req.body;
-
-//     if (username) user.username = username.trim();
-//     if (bio !== undefined) user.bio = bio.trim();
-
-//     if (avatarKey) {
-//       const newUrl = `${CDN_BASE_URL}/${avatarKey}`;
-//       if (user.profilePicture !== newUrl) {
-//         user.profilePicture = newUrl;
-//       }
-//     }
-
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         _id: user._id,
-//         username: user.username,
-//         email: user.email,
-//         profilePicture: user.profilePicture,
-//         bio: user.bio,
-//         followersCount: user.followers.length,
-//         followingCount: user.following.length,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update profile error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Profile update failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔐 UPDATE PASSWORD
-// ================================ */
-// exports.updatePassword = async (req, res) => {
-//   try {
-//     const currentPassword = req.body.currentPassword?.trim();
-//     const newPassword = req.body.newPassword?.trim();
-
-//     if (!currentPassword || !newPassword) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Current password and new password are required',
-//       });
-//     }
-
-//     if (newPassword.length < 8) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'New password must be at least 8 characters',
-//       });
-//     }
-
-//     const user = await User.findById(req.user.id).select('+password');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const isMatch = await user.isPasswordMatch(currentPassword);
-//     if (!isMatch) {
-//       return res.status(401).json({
-//         success: false,
-//         message: 'Current password is incorrect',
-//       });
-//     }
-
-//     user.password = newPassword;
-//     await user.save({ validateBeforeSave: false });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Password updated successfully',
-//     });
-//   } catch (err) {
-//     console.error('Update password error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update password',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== ACCOUNT SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    📋 GET ACCOUNT INFO
-// ================================ */
-// exports.getAccountInfo = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select(
-//       'username email phone name gender dateOfBirth profilePicture'
-//     );
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         username: user.username,
-//         email: user.email,
-//         phone: user.phone || '',
-//         name: user.name || '',
-//         gender: user.gender || '',
-//         dateOfBirth: user.dateOfBirth || null,
-//         profilePicture: user.profilePicture || '',
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get account info error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load account info',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ✏️ UPDATE ACCOUNT INFO
-// ================================ */
-// exports.updateAccountInfo = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { username, email, phone, name, gender, dateOfBirth } = req.body;
-
-//     // Username uniqueness check
-//     if (username && username.trim().toLowerCase() !== user.username) {
-//       const existing = await User.findOne({
-//         username: username.trim().toLowerCase(),
-//       });
-//       if (existing) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Username is already taken',
-//         });
-//       }
-//       user.username = username.trim().toLowerCase();
-//     }
-
-//     // Email uniqueness check
-//     if (email && email.trim().toLowerCase() !== user.email) {
-//       const existing = await User.findOne({
-//         email: email.trim().toLowerCase(),
-//       });
-//       if (existing) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Email is already in use',
-//         });
-//       }
-//       user.email = email.trim().toLowerCase();
-//     }
-
-//     if (phone !== undefined) user.phone = phone.trim();
-//     if (name !== undefined) user.name = name.trim();
-//     if (gender !== undefined) user.gender = gender;
-//     if (dateOfBirth !== undefined) {
-//       user.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
-//     }
-
-//     await user.save({ validateBeforeSave: true });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Account updated successfully',
-//       data: {
-//         username: user.username,
-//         email: user.email,
-//         phone: user.phone,
-//         name: user.name,
-//         gender: user.gender,
-//         dateOfBirth: user.dateOfBirth,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update account info error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update account info',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== PRIVACY SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    🔒 GET PRIVACY SETTINGS
-// ================================ */
-// exports.getPrivacySettings = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select(
-//       'isPrivate activityStatusVisible showReadReceipts'
-//     );
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         isPrivate: user.isPrivate,
-//         activityStatusVisible: user.activityStatusVisible,
-//         showReadReceipts: user.showReadReceipts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Get privacy settings error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load privacy settings',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔒 UPDATE PRIVACY SETTINGS
-// ================================ */
-// exports.updatePrivacySettings = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const { isPrivate, activityStatusVisible, showReadReceipts } = req.body;
-
-//     if (typeof isPrivate === 'boolean') user.isPrivate = isPrivate;
-//     if (typeof activityStatusVisible === 'boolean')
-//       user.activityStatusVisible = activityStatusVisible;
-//     if (typeof showReadReceipts === 'boolean')
-//       user.showReadReceipts = showReadReceipts;
-
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Privacy settings updated',
-//       data: {
-//         isPrivate: user.isPrivate,
-//         activityStatusVisible: user.activityStatusVisible,
-//         showReadReceipts: user.showReadReceipts,
-//       },
-//     });
-//   } catch (err) {
-//     console.error('Update privacy settings error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update privacy settings',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🚫 BLOCK USER
-// ================================ */
-// exports.blockUser = async (req, res) => {
-//   try {
-//     const targetId = req.params.id;
-
-//     if (targetId === req.user.id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot block yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(req.user.id);
-
-//     const isBlocked = me.blockedUsers.includes(targetId);
-
-//     if (isBlocked) {
-//       // UNBLOCK
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { blockedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         blocked: false,
-//         message: `Unblocked @${targetUser.username}`,
-//       });
-//     } else {
-//       // BLOCK — also unfollow each other
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $addToSet: { blockedUsers: targetId },
-//         $pull: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $pull: { followers: req.user.id, following: req.user.id },
-//       });
-
-//       // Remove target from my followers too
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { followers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         blocked: true,
-//         message: `Blocked @${targetUser.username}`,
-//       });
-//     }
-//   } catch (err) {
-//     console.error('Block user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Block action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🚫 GET BLOCKED USERS
-// ================================ */
-// exports.getBlockedUsers = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id)
-//       .populate('blockedUsers', 'username profilePicture')
-//       .select('blockedUsers');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.blockedUsers || [],
-//     });
-//   } catch (err) {
-//     console.error('Get blocked users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load blocked users',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔇 MUTE / UNMUTE USER
-// ================================ */
-// exports.muteUser = async (req, res) => {
-//   try {
-//     const targetId = req.params.id;
-
-//     if (targetId === req.user.id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot mute yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(req.user.id);
-//     const isMuted = me.mutedUsers.includes(targetId);
-
-//     if (isMuted) {
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $pull: { mutedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         muted: false,
-//         message: `Unmuted @${targetUser.username}`,
-//       });
-//     } else {
-//       await User.findByIdAndUpdate(req.user.id, {
-//         $addToSet: { mutedUsers: targetId },
-//       });
-
-//       return res.status(200).json({
-//         success: true,
-//         muted: true,
-//         message: `Muted @${targetUser.username}`,
-//       });
-//     }
-//   } catch (err) {
-//     console.error('Mute user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Mute action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔇 GET MUTED USERS
-// ================================ */
-// exports.getMutedUsers = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id)
-//       .populate('mutedUsers', 'username profilePicture')
-//       .select('mutedUsers');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.mutedUsers || [],
-//     });
-//   } catch (err) {
-//     console.error('Get muted users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load muted users',
-//     });
-//   }
-// };
-
-// /* ================================================================
-//    ========== SECURITY SETTINGS ==========
-// ================================================================ */
-
-// /* ================================
-//    🛡️ GET LOGIN ACTIVITY
-// ================================ */
-// exports.getLoginActivity = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id).select('loginActivity');
-
-//     return res.status(200).json({
-//       success: true,
-//       data: user.loginActivity || [],
-//     });
-//   } catch (err) {
-//     console.error('Get login activity error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load login activity',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🛡️ TOGGLE TWO-FACTOR AUTH
-// ================================ */
-// exports.toggleTwoFactor = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.id);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     user.twoFactorEnabled = !user.twoFactorEnabled;
-//     await user.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       twoFactorEnabled: user.twoFactorEnabled,
-//       message: user.twoFactorEnabled
-//         ? 'Two-factor authentication enabled'
-//         : 'Two-factor authentication disabled',
-//     });
-//   } catch (err) {
-//     console.error('Toggle 2FA error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to update two-factor setting',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🗑️ DELETE ACCOUNT
-// ================================ */
-// exports.deleteAccount = async (req, res) => {
-//   try {
-//     const { password } = req.body;
-
-//     if (!password) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Password is required to delete account',
-//       });
-//     }
-
-//     const user = await User.findById(req.user.id).select('+password');
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const isMatch = await user.isPasswordMatch(password);
-//     if (!isMatch) {
-//       return res.status(401).json({
-//         success: false,
-//         message: 'Incorrect password',
-//       });
-//     }
-
-//     // Remove user from all followers/following lists
-//     await User.updateMany(
-//       { followers: user._id },
-//       { $pull: { followers: user._id } }
-//     );
-//     await User.updateMany(
-//       { following: user._id },
-//       { $pull: { following: user._id } }
-//     );
-
-//     // Delete user's posts
-//     await Post.deleteMany({ user: user._id });
-
-//     // Delete the user
-//     await User.findByIdAndDelete(user._id);
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Account deleted successfully',
-//     });
-//   } catch (err) {
-//     console.error('Delete account error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to delete account',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🔄 FOLLOW / UNFOLLOW
-// ================================ */
-// exports.followUser = async (req, res) => {
-//   try {
-//     const myId = req.user.id;
-//     const targetId = req.params.id;
-
-//     if (myId === targetId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'You cannot follow yourself',
-//       });
-//     }
-
-//     const targetUser = await User.findById(targetId);
-//     if (!targetUser) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const me = await User.findById(myId).select('following');
-
-//     const isFollowing = me.following.includes(targetId);
-
-//     if (isFollowing) {
-//       // UNFOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $pull: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $pull: { followers: myId },
-//       });
-//     } else {
-//       // FOLLOW
-//       await User.findByIdAndUpdate(myId, {
-//         $addToSet: { following: targetId },
-//       });
-
-//       await User.findByIdAndUpdate(targetId, {
-//         $addToSet: { followers: myId },
-//       });
-
-//       // Notification (safe)
-//       try {
-//         await notificationService.createNotification({
-//           recipient: targetId,
-//           sender: myId,
-//           type: 'follow',
-//           message: 'started following you',
-//         });
-//       } catch (err) {
-//         console.error('Notification error:', err);
-//       }
-//     }
-
-//     const updatedTarget = await User.findById(targetId).select('followers');
-
-//     return res.status(200).json({
-//       success: true,
-//       following: !isFollowing,
-//       followersCount: updatedTarget.followers.length,
-//     });
-//   } catch (err) {
-//     console.error('Follow user error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Follow action failed',
-//     });
-//   }
-// };
-
-// /* ================================
-//    👥 FOLLOWERS / FOLLOWING LIST
-// ================================ */
-// exports.getFollowList = async (req, res) => {
-//   try {
-//     const { id, type } = req.params;
-
-//     if (!['followers', 'following'].includes(type)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Invalid follow type',
-//       });
-//     }
-
-//     const user = await User.findById(id)
-//       .populate(type, 'username profilePicture lastSeen')
-//       .select(type);
-
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'User not found',
-//       });
-//     }
-
-//     const currentUser = await User.findById(req.user.id).select('following');
-//     const followingSet = new Set(
-//       currentUser.following.map(id => id.toString())
-//     );
-
-//     const listWithStatus = await Promise.all(
-//       user[type].map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: followingSet.has(u._id.toString()),
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: listWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Get follow list error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load follow list',
-//     });
-//   }
-// };
-
-// /* ================================
-//    ⭐ SUGGESTED USERS
-// ================================ */
-// exports.getSuggestedUsers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id);
-
-//     const users = await User.find({
-//       _id: { $nin: [req.user.id, ...me.following] },
-//     })
-//       .select('username profilePicture lastSeen')
-//       .limit(20);
-
-//     const usersWithStatus = await Promise.all(
-//       users.map(async (u) => {
-//         const status = await getUserStatus(u);
-//         return {
-//           _id: u._id,
-//           username: u.username,
-//           profilePicture: u.profilePicture,
-//           isFollowing: false,
-//           online: status.online,
-//           lastSeen: status.lastSeen,
-//         };
-//       })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: usersWithStatus,
-//     });
-//   } catch (err) {
-//     console.error('Suggested users error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load suggestions',
-//     });
-//   }
-// };
-
-// /* ================================
-//    🤝 MUTUAL FOLLOWERS
-// ================================ */
-// exports.getMutualFollowers = async (req, res) => {
-//   try {
-//     const me = await User.findById(req.user.id)
-//       .populate('followers', 'username profilePicture lastSeen')
-//       .populate('following', '_id');
-
-//     const followingSet = new Set(
-//       me.following.map(u => u._id.toString())
-//     );
-
-//     const mutuals = await Promise.all(
-//       me.followers
-//         .filter(f => followingSet.has(f._id.toString()))
-//         .map(async (f) => {
-//           const status = await getUserStatus(f);
-//           return {
-//             _id: f._id,
-//             username: f.username,
-//             profilePicture: f.profilePicture,
-//             isFollowing: true,
-//             online: status.online,
-//             lastSeen: status.lastSeen,
-//           };
-//         })
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: mutuals,
-//     });
-//   } catch (err) {
-//     console.error('Mutual followers error:', err);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Failed to load mutual followers',
-//     });
-//   }
-// };
-
-
-
-
-
-
 const User = require('../models/user.model');
 const Post = require('../models/Post');
 const notificationService = require('../services/notification.service');
 const { getUserStatus } = require('../utils/userStatus.util');
+const escapeRegex = require('../utils/escapeRegex');
+const validator = require('validator');
+const Otp = require('../models/Otp.model');
+const sendEmail = require('../utils/sendEmail');
+const { generateOtp, getOtpExpiry, consumeOtp } = require('../utils/otp');
+const { verifyUploadedMedia } = require('../utils/verifyUpload');
+const graph = require('../services/graph.service');
+const { deleteAccountData } = require('../services/accountDeletion.service');
+const { exportUserData } = require('../services/dataExport.service');
+const access = require('../services/access.service');
+const loadUsersInOrder = require('../utils/loadUsersInOrder');
+const logger = require('../utils/logger');
+const str = require('../utils/str');
 
 /**
  * CDN BASE URL
@@ -2480,19 +34,19 @@ exports.searchUsers = async (req, res) => {
       return res.status(200).json({ success: true, data: [] });
     }
 
-    const currentUser = await User.findById(req.user.id).select('following');
-    const followingSet = new Set(
-      currentUser.following.map(id => id.toString())
-    );
-
+    const blockedEitherWay = await graph.getBlockedEitherWayIds(req.user.id);
     const users = await User.find({
-      username: { $regex: q, $options: 'i' },
-      _id: { $ne: req.user.id },
-    }).select('username profilePicture lastSeen');
+      username: { $regex: escapeRegex(q), $options: 'i' },
+      _id: { $ne: req.user.id, $nin: blockedEitherWay },
+    })
+      .select('username profilePicture lastSeen activityStatusVisible')
+      .limit(50);
+
+    const followingSet = new Set(await graph.getFollowingIds(req.user.id));
 
     const usersWithStatus = await Promise.all(
       users.map(async (user) => {
-        const status = await getUserStatus(user);
+        const status = await getUserStatus(user, req.user);
         return {
           _id: user._id,
           username: user.username,
@@ -2509,7 +63,7 @@ exports.searchUsers = async (req, res) => {
       data: usersWithStatus,
     });
   } catch (err) {
-    console.error('Search users error:', err);
+    logger.error('Search users error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to search users',
@@ -2524,10 +78,7 @@ exports.getUserProfile = async (req, res) => {
   try {
     const user = await User.findOne({
       username: req.params.username,
-    })
-      .select('-password')
-      .populate('followers', 'username profilePicture')
-      .populate('following', '_id');
+    }).select('-password');
 
     if (!user) {
       return res.status(404).json({
@@ -2536,36 +87,47 @@ exports.getUserProfile = async (req, res) => {
       });
     }
 
-    const posts = await Post.find({ user: user._id })
-      .sort({ createdAt: -1 })
-      .select('media user createdAt repostOf repostOfModel')
-      .populate({
-        path: 'repostOf',
-        populate: { path: 'user', select: 'username name profilePicture' },
-      })
-      .lean();
+    const isSelf = user._id.toString() === req.user.id;
+    const relationship = await graph.getRelationship(req.user.id, user._id);
 
-    const currentUser = await User.findById(req.user.id).select(
-      'following followers'
-    );
+    // Blocked either way: behave as if the account doesn't exist.
+    if (relationship.iBlocked || relationship.blockedMe) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
 
-    const isFollowing = currentUser.following.some(
-      id => id.toString() === user._id.toString()
-    );
+    const { isFollowing, followsMe } = relationship;
+    // Private + not following: show the header, hide the content.
+    const isLocked = !!user.isPrivate && !isSelf && !isFollowing;
 
-    const theyFollowMe = user.following.some(
-      f => f._id.toString() === req.user.id.toString()
-    );
+    const [posts, postsCount, counts, mutual, isRequested] = await Promise.all([
+      isLocked
+        ? []
+        : Post.find({ user: user._id })
+            .sort({ createdAt: -1 })
+            .select('media caption user createdAt repostOf repostOfModel')
+            .populate({
+              path: 'repostOf',
+              populate: { path: 'user', select: 'username name profilePicture' },
+            })
+            .lean()
+            .then(async (list) =>
+              access.redactHiddenReposts(list, await access.getHiddenAuthorIds(req.user.id))
+            ),
+      Post.countDocuments({ user: user._id }),
+      graph.getCounts(user._id),
+      // Mutual = people I follow who also follow this profile.
+      graph.getMutualFollowersOf(req.user.id, user._id, { limit: 6 }),
+      isLocked ? graph.hasRequested(req.user.id, user._id) : false,
+    ]);
 
-    const canMessage = isFollowing || theyFollowMe;
-    const status = await getUserStatus(user);
-
-    // Mutual = people I follow who also follow this profile.
-    const myFollowingSet = new Set(
-      currentUser.following.map(id => id.toString())
-    );
-    const mutualFollowers = user.followers.filter(
-      f => f._id.toString() !== req.user.id.toString() && myFollowingSet.has(f._id.toString())
+    const canMessage = isFollowing || followsMe;
+    const status = await getUserStatus(user, req.user);
+    const mutualPreview = await loadUsersInOrder(
+      mutual.ids,
+      'username profilePicture'
     );
 
     return res.status(200).json({
@@ -2580,15 +142,18 @@ exports.getUserProfile = async (req, res) => {
         website: user.website || '',
         isVerified: user.isVerified || false,
         createdAt: user.createdAt,
-        postsCount: posts.length,
-        followersCount: user.followers.length,
-        followingCount: user.following.length,
+        postsCount,
+        followersCount: counts.followersCount,
+        followingCount: counts.followingCount,
         isFollowing,
+        isPrivate: !!user.isPrivate,
+        isLocked,
+        isRequested,
         canMessage,
         online: status.online,
         lastSeen: status.lastSeen,
-        mutualCount: mutualFollowers.length,
-        mutualPreview: mutualFollowers.slice(0, 6).map(f => ({
+        mutualCount: mutual.total,
+        mutualPreview: mutualPreview.map((f) => ({
           _id: f._id,
           username: f.username,
           profilePicture: f.profilePicture,
@@ -2597,7 +162,7 @@ exports.getUserProfile = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Get profile error:', err);
+    logger.error('Get profile error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load profile',
@@ -2612,13 +177,50 @@ exports.updateUserProfile = async (req, res) => {
   try {
     const { username, bio, location, website, avatarKey } = req.body;
 
+    for (const [key, val] of Object.entries({ username, bio, location, website })) {
+      if (val !== undefined && typeof val !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: `${key} must be a string`,
+        });
+      }
+    }
+
     // Build update fields
     const updateFields = {};
-    if (username) updateFields.username = username.trim();
+    if (username && username.trim().toLowerCase() !== req.user.username) {
+      const normalized = username.trim().toLowerCase();
+      if (!/^[a-z0-9._]{3,30}$/.test(normalized)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Username must be 3-30 characters: letters, numbers, dots or underscores',
+        });
+      }
+      const taken = await User.exists({
+        username: normalized,
+        _id: { $ne: req.user._id },
+      });
+      if (taken) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username is already taken',
+        });
+      }
+      updateFields.username = normalized;
+    }
     if (bio !== undefined) updateFields.bio = bio.trim();
     if (location !== undefined) updateFields.location = location.trim();
     if (website !== undefined) updateFields.website = website.trim();
     if (avatarKey) {
+      try {
+        await verifyUploadedMedia(avatarKey, req.user.id, 'image');
+      } catch (err) {
+        return res.status(err.statusCode || 400).json({
+          success: false,
+          message: err.message,
+        });
+      }
       updateFields.profilePicture = `${CDN_BASE_URL}/${avatarKey}`;
     }
 
@@ -2627,8 +229,9 @@ exports.updateUserProfile = async (req, res) => {
       { $set: updateFields },
       {
         new: true,
+        runValidators: true, // enforce schema length limits on update
         select:
-          '_id username email profilePicture bio location website isVerified createdAt followers following',
+          '_id username email profilePicture bio location website isVerified createdAt',
       }
     );
 
@@ -2651,12 +254,17 @@ exports.updateUserProfile = async (req, res) => {
         website: user.website || '',
         isVerified: user.isVerified || false,
         createdAt: user.createdAt,
-        followersCount: user.followers.length,
-        followingCount: user.following.length,
+        ...(await graph.getCounts(user._id)),
       },
     });
   } catch (err) {
-    console.error('Update profile error:', err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: Object.values(err.errors).map((e) => e.message).join(', '),
+      });
+    }
+    logger.error('Update profile error:', err);
     return res.status(500).json({
       success: false,
       message: 'Profile update failed',
@@ -2669,8 +277,8 @@ exports.updateUserProfile = async (req, res) => {
 ================================ */
 exports.updatePassword = async (req, res) => {
   try {
-    const currentPassword = req.body.currentPassword?.trim();
-    const newPassword = req.body.newPassword?.trim();
+    const currentPassword = str(req.body.currentPassword);
+    const newPassword = str(req.body.newPassword);
 
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
@@ -2711,7 +319,7 @@ exports.updatePassword = async (req, res) => {
       message: 'Password updated successfully',
     });
   } catch (err) {
-    console.error('Update password error:', err);
+    logger.error('Update password error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to update password',
@@ -2753,10 +361,91 @@ exports.getAccountInfo = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Get account info error:', err);
+    logger.error('Get account info error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load account info',
+    });
+  }
+};
+
+/* ================================
+   📦 DOWNLOAD YOUR DATA
+   GET /users/me/export
+================================ */
+exports.exportMyData = async (req, res) => {
+  try {
+    const data = await exportUserData(req.user._id);
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    const date = new Date().toISOString().slice(0, 10);
+    res.set('Content-Disposition', `attachment; filename="instachat-data-${req.user.username}-${date}.json"`);
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    logger.error('Data export error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to export your data' });
+  }
+};
+
+/* ================================
+   ✉️ REQUEST EMAIL CHANGE CODE
+   POST /users/account-info/email/request-otp  { email }
+   Sends a code to the NEW address; confirm via PATCH /account-info
+   with { email, emailOtp }.
+================================ */
+exports.requestEmailChangeOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (typeof email !== 'string' || !validator.isEmail(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid email is required',
+      });
+    }
+
+    const newEmail = email.trim().toLowerCase();
+    if (newEmail === req.user.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'That is already your email',
+      });
+    }
+
+    if (await User.exists({ email: newEmail })) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already in use',
+      });
+    }
+
+    await Otp.deleteMany({ user: req.user._id, purpose: 'change-email' });
+
+    const otp = generateOtp();
+    await Otp.create({
+      email: newEmail,
+      user: req.user._id,
+      otp,
+      purpose: 'change-email',
+      expiresAt: getOtpExpiry(),
+    });
+
+    await sendEmail({
+      to: newEmail,
+      subject: 'InstaChat - Confirm your new email',
+      text: `Your InstaChat email change code is ${otp}. It is valid for 5 minutes. If you didn't request this, ignore this email.`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verification code sent to your new email',
+    });
+  } catch (err) {
+    logger.error('Request email change OTP error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send verification code',
     });
   }
 };
@@ -2775,10 +464,27 @@ exports.updateAccountInfo = async (req, res) => {
       });
     }
 
-    const { username, email, phone, name, gender, dateOfBirth } = req.body;
+    const { username, email, emailOtp, phone, name, gender, dateOfBirth } =
+      req.body;
 
-    // Username uniqueness check
+    for (const [key, val] of Object.entries({ username, email, phone, name })) {
+      if (val !== undefined && typeof val !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: `${key} must be a string`,
+        });
+      }
+    }
+
+    // Username format + uniqueness check
     if (username && username.trim().toLowerCase() !== user.username) {
+      if (!/^[a-z0-9._]{3,30}$/i.test(username.trim())) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Username must be 3-30 characters: letters, numbers, dots or underscores',
+        });
+      }
       const existing = await User.findOne({
         username: username.trim().toLowerCase(),
       });
@@ -2791,18 +497,44 @@ exports.updateAccountInfo = async (req, res) => {
       user.username = username.trim().toLowerCase();
     }
 
-    // Email uniqueness check
+    // Email change: must be confirmed with a code sent to the NEW
+    // address (POST /users/account-info/email/request-otp first).
+    // Otherwise a hijacked session could silently move the account to an
+    // attacker's inbox and lock the owner out via "forgot password".
+    let previousEmail = null;
     if (email && email.trim().toLowerCase() !== user.email) {
-      const existing = await User.findOne({
-        email: email.trim().toLowerCase(),
-      });
+      const newEmail = email.trim().toLowerCase();
+      const existing = await User.findOne({ email: newEmail });
       if (existing) {
         return res.status(400).json({
           success: false,
           message: 'Email is already in use',
         });
       }
-      user.email = email.trim().toLowerCase();
+
+      if (typeof emailOtp !== 'string' || !emailOtp.trim()) {
+        return res.status(400).json({
+          success: false,
+          code: 'EMAIL_OTP_REQUIRED',
+          message: 'Enter the verification code sent to your new email',
+        });
+      }
+
+      const otpRecord = await consumeOtp(Otp, {
+        email: newEmail,
+        purpose: 'change-email',
+        user: user._id,
+        otp: emailOtp,
+      });
+      if (!otpRecord) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired verification code',
+        });
+      }
+
+      previousEmail = user.email;
+      user.email = newEmail;
     }
 
     if (phone !== undefined) user.phone = phone.trim();
@@ -2813,6 +545,15 @@ exports.updateAccountInfo = async (req, res) => {
     }
 
     await user.save({ validateBeforeSave: true });
+
+    if (previousEmail) {
+      // Best-effort security notice to the old address.
+      sendEmail({
+        to: previousEmail,
+        subject: 'InstaChat - Your email address was changed',
+        text: `The email on your InstaChat account (@${user.username}) was changed to ${user.email}. If you didn't do this, contact support immediately.`,
+      }).catch(() => {});
+    }
 
     return res.status(200).json({
       success: true,
@@ -2827,7 +568,7 @@ exports.updateAccountInfo = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Update account info error:', err);
+    logger.error('Update account info error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to update account info',
@@ -2864,7 +605,7 @@ exports.getPrivacySettings = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Get privacy settings error:', err);
+    logger.error('Get privacy settings error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load privacy settings',
@@ -2900,6 +641,11 @@ exports.updatePrivacySettings = async (req, res) => {
       });
     }
 
+    // Going public: everyone waiting on a request becomes a follower.
+    if (updateFields.isPrivate === false) {
+      await graph.acceptAllFollowRequests(req.user.id);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Privacy settings updated',
@@ -2910,7 +656,7 @@ exports.updatePrivacySettings = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Update privacy settings error:', err);
+    logger.error('Update privacy settings error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to update privacy settings',
@@ -2940,45 +686,16 @@ exports.blockUser = async (req, res) => {
       });
     }
 
-    const me = await User.findById(req.user.id);
+    // Blocking also removes follows + close friends both ways.
+    const { blocked } = await graph.toggleBlock(req.user.id, targetId);
 
-    const isBlocked = me.blockedUsers.includes(targetId);
-
-    if (isBlocked) {
-      // UNBLOCK
-      await User.findByIdAndUpdate(req.user.id, {
-        $pull: { blockedUsers: targetId },
-      });
-
-      return res.status(200).json({
-        success: true,
-        blocked: false,
-        message: `Unblocked @${targetUser.username}`,
-      });
-    } else {
-      // BLOCK — also unfollow each other
-      await User.findByIdAndUpdate(req.user.id, {
-        $addToSet: { blockedUsers: targetId },
-        $pull: { following: targetId },
-      });
-
-      await User.findByIdAndUpdate(targetId, {
-        $pull: { followers: req.user.id, following: req.user.id },
-      });
-
-      // Remove target from my followers too
-      await User.findByIdAndUpdate(req.user.id, {
-        $pull: { followers: targetId },
-      });
-
-      return res.status(200).json({
-        success: true,
-        blocked: true,
-        message: `Blocked @${targetUser.username}`,
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      blocked,
+      message: `${blocked ? 'Blocked' : 'Unblocked'} @${targetUser.username}`,
+    });
   } catch (err) {
-    console.error('Block user error:', err);
+    logger.error('Block user error:', err);
     return res.status(500).json({
       success: false,
       message: 'Block action failed',
@@ -2991,16 +708,15 @@ exports.blockUser = async (req, res) => {
 ================================ */
 exports.getBlockedUsers = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .populate('blockedUsers', 'username profilePicture')
-      .select('blockedUsers');
+    const ids = await graph.getBlockedIds(req.user.id);
+    const users = await loadUsersInOrder(ids, 'username profilePicture');
 
     return res.status(200).json({
       success: true,
-      data: user.blockedUsers || [],
+      data: users,
     });
   } catch (err) {
-    console.error('Get blocked users error:', err);
+    logger.error('Get blocked users error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load blocked users',
@@ -3030,32 +746,15 @@ exports.muteUser = async (req, res) => {
       });
     }
 
-    const me = await User.findById(req.user.id);
-    const isMuted = me.mutedUsers.includes(targetId);
+    const { muted } = await graph.toggleMute(req.user.id, targetId);
 
-    if (isMuted) {
-      await User.findByIdAndUpdate(req.user.id, {
-        $pull: { mutedUsers: targetId },
-      });
-
-      return res.status(200).json({
-        success: true,
-        muted: false,
-        message: `Unmuted @${targetUser.username}`,
-      });
-    } else {
-      await User.findByIdAndUpdate(req.user.id, {
-        $addToSet: { mutedUsers: targetId },
-      });
-
-      return res.status(200).json({
-        success: true,
-        muted: true,
-        message: `Muted @${targetUser.username}`,
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      muted,
+      message: `${muted ? 'Muted' : 'Unmuted'} @${targetUser.username}`,
+    });
   } catch (err) {
-    console.error('Mute user error:', err);
+    logger.error('Mute user error:', err);
     return res.status(500).json({
       success: false,
       message: 'Mute action failed',
@@ -3068,16 +767,15 @@ exports.muteUser = async (req, res) => {
 ================================ */
 exports.getMutedUsers = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .populate('mutedUsers', 'username profilePicture')
-      .select('mutedUsers');
+    const ids = await graph.getMutedIds(req.user.id);
+    const users = await loadUsersInOrder(ids, 'username profilePicture');
 
     return res.status(200).json({
       success: true,
-      data: user.mutedUsers || [],
+      data: users,
     });
   } catch (err) {
-    console.error('Get muted users error:', err);
+    logger.error('Get muted users error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load muted users',
@@ -3101,7 +799,7 @@ exports.getLoginActivity = async (req, res) => {
       data: user.loginActivity || [],
     });
   } catch (err) {
-    console.error('Get login activity error:', err);
+    logger.error('Get login activity error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load login activity',
@@ -3136,7 +834,7 @@ exports.registerPushToken = async (req, res) => {
 
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error('Register push token error:', err);
+    logger.error('Register push token error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to register push token',
@@ -3161,7 +859,7 @@ exports.removePushToken = async (req, res) => {
 
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error('Remove push token error:', err);
+    logger.error('Remove push token error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to remove push token',
@@ -3198,7 +896,7 @@ exports.toggleTwoFactor = async (req, res) => {
         : 'Two-factor authentication disabled',
     });
   } catch (err) {
-    console.error('Toggle 2FA error:', err);
+    logger.error('Toggle 2FA error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to update two-factor setting',
@@ -3229,7 +927,8 @@ exports.deleteAccount = async (req, res) => {
       });
     }
 
-    const isMatch = await user.isPasswordMatch(password);
+    const isMatch =
+      typeof password === 'string' && (await user.isPasswordMatch(password));
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -3237,28 +936,20 @@ exports.deleteAccount = async (req, res) => {
       });
     }
 
-    // Remove user from all followers/following lists
-    await User.updateMany(
-      { followers: user._id },
-      { $pull: { followers: user._id } }
-    );
-    await User.updateMany(
-      { following: user._id },
-      { $pull: { following: user._id } }
-    );
+    // Full erasure: content, messages, media, likes, graph... (see service)
+    await deleteAccountData(user._id);
 
-    // Delete user's posts
-    await Post.deleteMany({ user: user._id });
-
-    // Delete the user
-    await User.findByIdAndDelete(user._id);
+    // End any open realtime connections for this account.
+    try {
+      require('../services/socket.service').getIO().in(user._id.toString()).disconnectSockets(true);
+    } catch {}
 
     return res.status(200).json({
       success: true,
       message: 'Account deleted successfully',
     });
   } catch (err) {
-    console.error('Delete account error:', err);
+    logger.error('Delete account error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to delete account',
@@ -3289,54 +980,126 @@ exports.followUser = async (req, res) => {
       });
     }
 
-    const me = await User.findById(myId).select('following');
+    let following;
+    let requested = false;
+    try {
+      const alreadyFollowing = await graph.isFollowing(myId, targetId);
+      if (targetUser.isPrivate && !alreadyFollowing) {
+        // Private account: send (or cancel) a follow request instead.
+        ({ requested } = await graph.toggleFollowRequest(myId, targetId));
+        following = false;
+      } else {
+        ({ following } = await graph.toggleFollow(myId, targetId));
+      }
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({
+          success: false,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
 
-    const isFollowing = me.following.includes(targetId);
-
-    if (isFollowing) {
-      // UNFOLLOW
-      await User.findByIdAndUpdate(myId, {
-        $pull: { following: targetId },
-      });
-
-      await User.findByIdAndUpdate(targetId, {
-        $pull: { followers: myId },
-      });
-    } else {
-      // FOLLOW
-      await User.findByIdAndUpdate(myId, {
-        $addToSet: { following: targetId },
-      });
-
-      await User.findByIdAndUpdate(targetId, {
-        $addToSet: { followers: myId },
-      });
-
+    if (following || requested) {
       // Notification (safe)
       try {
         await notificationService.createNotification({
           recipient: targetId,
           sender: myId,
-          type: 'follow',
-          message: 'started following you',
+          type: requested ? 'follow_request' : 'follow',
+          message: requested ? 'requested to follow you' : 'started following you',
         });
       } catch (err) {
-        console.error('Notification error:', err);
+        logger.error('Notification error:', err);
       }
     }
 
-    const updatedTarget = await User.findById(targetId).select('followers');
+    const { followersCount } = await graph.getCounts(targetId);
 
     return res.status(200).json({
       success: true,
-      following: !isFollowing,
-      followersCount: updatedTarget.followers.length,
+      following,
+      requested,
+      followersCount,
     });
   } catch (err) {
-    console.error('Follow user error:', err);
+    logger.error('Follow user error:', err);
     return res.status(500).json({
       success: false,
       message: 'Follow action failed',
+    });
+  }
+};
+
+/* ================================
+   📨 FOLLOW REQUESTS (private accounts)
+================================ */
+exports.getFollowRequests = async (req, res) => {
+  try {
+    const ids = await graph.getFollowRequestIds(req.user.id);
+    const users = await loadUsersInOrder(ids, 'username name profilePicture');
+
+    return res.status(200).json({
+      success: true,
+      data: users.map((u) => ({
+        _id: u._id,
+        username: u.username,
+        name: u.name,
+        profilePicture: u.profilePicture,
+      })),
+    });
+  } catch (err) {
+    logger.error('Get follow requests error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to load follow requests',
+    });
+  }
+};
+
+exports.respondToFollowRequest = async (req, res) => {
+  try {
+    const requesterId = req.params.id;
+    const accept = req.params.action === 'accept';
+
+    if (!['accept', 'decline'].includes(req.params.action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action' });
+    }
+
+    const handled = accept
+      ? await graph.acceptFollowRequest(req.user.id, requesterId)
+      : await graph.declineFollowRequest(req.user.id, requesterId);
+
+    if (!handled) {
+      return res.status(404).json({
+        success: false,
+        message: 'Follow request not found',
+      });
+    }
+
+    if (accept) {
+      try {
+        await notificationService.createNotification({
+          recipient: requesterId,
+          sender: req.user.id,
+          type: 'follow',
+          message: 'accepted your follow request',
+        });
+      } catch (err) {
+        logger.error('Notification error:', err);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      accepted: accept,
+    });
+  } catch (err) {
+    logger.error('Respond to follow request error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update follow request',
     });
   }
 };
@@ -3346,22 +1109,17 @@ exports.followUser = async (req, res) => {
 ================================ */
 exports.getCloseFriendsCandidates = async (req, res) => {
   try {
-    const me = await User.findById(req.user.id)
-      .populate('following', 'username name profilePicture')
-      .select('following closeFriends');
-
-    if (!me) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    const closeFriendsSet = new Set(
-      me.closeFriends.map((id) => id.toString())
+    const [followingIds, closeFriendIds] = await Promise.all([
+      graph.getFollowingIds(req.user.id),
+      graph.getCloseFriendIds(req.user.id),
+    ]);
+    const closeFriendsSet = new Set(closeFriendIds);
+    const following = await loadUsersInOrder(
+      followingIds,
+      'username name profilePicture'
     );
 
-    const data = me.following.map((u) => ({
+    const data = following.map((u) => ({
       _id: u._id,
       username: u.username,
       name: u.name,
@@ -3374,7 +1132,7 @@ exports.getCloseFriendsCandidates = async (req, res) => {
       data,
     });
   } catch (err) {
-    console.error('Get close friends candidates error:', err);
+    logger.error('Get close friends candidates error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load close friends',
@@ -3394,21 +1152,21 @@ exports.toggleCloseFriend = async (req, res) => {
       });
     }
 
-    const me = await User.findById(myId).select('closeFriends');
-    const isCloseFriend = me.closeFriends.some(
-      (id) => id.toString() === targetId
-    );
+    if (!(await User.exists({ _id: targetId }))) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
 
-    await User.findByIdAndUpdate(myId, {
-      [isCloseFriend ? '$pull' : '$addToSet']: { closeFriends: targetId },
-    });
+    const { isCloseFriend } = await graph.toggleCloseFriend(myId, targetId);
 
     return res.status(200).json({
       success: true,
-      isCloseFriend: !isCloseFriend,
+      isCloseFriend,
     });
   } catch (err) {
-    console.error('Toggle close friend error:', err);
+    logger.error('Toggle close friend error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to update close friends',
@@ -3430,25 +1188,41 @@ exports.getFollowList = async (req, res) => {
       });
     }
 
-    const user = await User.findById(id)
-      .populate(type, 'username profilePicture lastSeen')
-      .select(type);
-
-    if (!user) {
+    const owner = await User.findById(id).select('isPrivate').lean();
+    if (!owner) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
       });
     }
 
-    const currentUser = await User.findById(req.user.id).select('following');
-    const followingSet = new Set(
-      currentUser.following.map(id => id.toString())
-    );
+    try {
+      await access.assertCanView(req.user.id, owner);
+    } catch (err) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+        ...(err.code ? { code: err.code } : {}),
+      });
+    }
+
+    // ?limit=&offset= for paging; default keeps the old "whole list"
+    // behaviour but capped so a huge account can't blow up a response.
+    const limit = Math.min(Number(req.query.limit) || 500, 500);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const [listIds, myFollowingIds] = await Promise.all([
+      type === 'followers'
+        ? graph.getFollowerIds(id, { limit, offset })
+        : graph.getFollowingIds(id, { limit, offset }),
+      graph.getFollowingIds(req.user.id),
+    ]);
+    const followingSet = new Set(myFollowingIds);
+    const users = await loadUsersInOrder(listIds, 'username profilePicture lastSeen activityStatusVisible');
 
     const listWithStatus = await Promise.all(
-      user[type].map(async (u) => {
-        const status = await getUserStatus(u);
+      users.map(async (u) => {
+        const status = await getUserStatus(u, req.user);
         return {
           _id: u._id,
           username: u.username,
@@ -3465,7 +1239,7 @@ exports.getFollowList = async (req, res) => {
       data: listWithStatus,
     });
   } catch (err) {
-    console.error('Get follow list error:', err);
+    logger.error('Get follow list error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load follow list',
@@ -3478,24 +1252,37 @@ exports.getFollowList = async (req, res) => {
 ================================ */
 exports.getSuggestedUsers = async (req, res) => {
   try {
-    const me = await User.findById(req.user.id).select('following');
-    const myFollowingSet = new Set(me.following.map((id) => id.toString()));
+    const LIMIT = 20;
 
-    const users = await User.find({
-      _id: { $nin: [req.user.id, ...me.following] },
-    })
-      .select('username profilePicture lastSeen followers')
-      .limit(20);
+    // Friends-of-friends first (ranked by mutual count in Postgres).
+    const ranked = await graph.getSuggestions(req.user.id, { limit: LIMIT });
+    const mutualById = new Map(ranked.map((r) => [r.id, r.mutualCount]));
+    let users = await loadUsersInOrder(
+      ranked.map((r) => r.id),
+      'username profilePicture lastSeen activityStatusVisible'
+    );
+
+    // Top up with other accounts (new users with no graph yet).
+    if (users.length < LIMIT) {
+      const [followingIds, blockedIds] = await Promise.all([
+        graph.getFollowingIds(req.user.id),
+        graph.getBlockedIds(req.user.id),
+      ]);
+      const exclude = [
+        req.user.id,
+        ...followingIds,
+        ...blockedIds,
+        ...users.map((u) => u._id.toString()),
+      ];
+      const extra = await User.find({ _id: { $nin: exclude } })
+        .select('username profilePicture lastSeen activityStatusVisible')
+        .limit(LIMIT - users.length);
+      users = users.concat(extra);
+    }
 
     const usersWithStatus = await Promise.all(
       users.map(async (u) => {
-        const status = await getUserStatus(u);
-
-        // Mutual = people I follow who also follow this candidate.
-        const mutualCount = (u.followers || []).filter((f) =>
-          myFollowingSet.has(f.toString())
-        ).length;
-
+        const status = await getUserStatus(u, req.user);
         return {
           _id: u._id,
           username: u.username,
@@ -3503,20 +1290,17 @@ exports.getSuggestedUsers = async (req, res) => {
           isFollowing: false,
           online: status.online,
           lastSeen: status.lastSeen,
-          mutualCount,
+          mutualCount: mutualById.get(u._id.toString()) || 0,
         };
       })
     );
-
-    // Surface the most relevant (highest mutual overlap) suggestions first.
-    usersWithStatus.sort((a, b) => b.mutualCount - a.mutualCount);
 
     return res.status(200).json({
       success: true,
       data: usersWithStatus,
     });
   } catch (err) {
-    console.error('Suggested users error:', err);
+    logger.error('Suggested users error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load suggestions',
@@ -3529,28 +1313,21 @@ exports.getSuggestedUsers = async (req, res) => {
 ================================ */
 exports.getMutualFollowers = async (req, res) => {
   try {
-    const me = await User.findById(req.user.id)
-      .populate('followers', 'username profilePicture lastSeen')
-      .populate('following', '_id');
-
-    const followingSet = new Set(
-      me.following.map(u => u._id.toString())
-    );
+    const ids = await graph.getMutualIds(req.user.id);
+    const users = await loadUsersInOrder(ids, 'username profilePicture lastSeen activityStatusVisible');
 
     const mutuals = await Promise.all(
-      me.followers
-        .filter(f => followingSet.has(f._id.toString()))
-        .map(async (f) => {
-          const status = await getUserStatus(f);
-          return {
-            _id: f._id,
-            username: f.username,
-            profilePicture: f.profilePicture,
-            isFollowing: true,
-            online: status.online,
-            lastSeen: status.lastSeen,
-          };
-        })
+      users.map(async (f) => {
+        const status = await getUserStatus(f, req.user);
+        return {
+          _id: f._id,
+          username: f.username,
+          profilePicture: f.profilePicture,
+          isFollowing: true,
+          online: status.online,
+          lastSeen: status.lastSeen,
+        };
+      })
     );
 
     return res.status(200).json({
@@ -3558,7 +1335,7 @@ exports.getMutualFollowers = async (req, res) => {
       data: mutuals,
     });
   } catch (err) {
-    console.error('Mutual followers error:', err);
+    logger.error('Mutual followers error:', err);
     return res.status(500).json({
       success: false,
       message: 'Failed to load mutual followers',

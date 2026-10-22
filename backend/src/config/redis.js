@@ -2,100 +2,58 @@
  * ======================================================
  * REDIS CONFIGURATION
  * ======================================================
- * 
- * 👉 HOW TO USE:
- * 
- * LOCAL DEVELOPMENT:
- * - Comment PRODUCTION block
- * - Uncomment LOCAL block
- * 
- * PRODUCTION SERVER:
- * - Comment LOCAL block
- * - Uncomment PRODUCTION block
- * 
- * This file is MANUALLY controlled by you.
- * No env confusion. No hidden behavior.
+ * Configured entirely from env — no manual editing per environment.
+ *
+ *   REDIS_URL        full connection string (takes precedence),
+ *                    e.g. redis://:password@host:6379/0 or rediss://...
+ *   REDIS_HOST       default 127.0.0.1
+ *   REDIS_PORT       default 6379
+ *   REDIS_PASSWORD   optional
+ *
+ * Redis is used for presence + rate limiting only, and every caller
+ * fails open, so a Redis outage degrades features but never crashes
+ * the API.
  */
+const Redis = require('ioredis');
+const logger = require('../utils/logger');
 
-/* ======================================================
-   🔹 IMPORT
-====================================================== */
-let redis;
+const isProduction = process.env.NODE_ENV === 'production';
 
-/* ======================================================
-   🧪 LOCAL DEVELOPMENT CONFIG
-   (USE THIS WHILE DEVELOPING LOCALLY)
-====================================================== */
+const baseOptions = {
+  lazyConnect: true,
+  enableReadyCheck: true,
+  maxRetriesPerRequest: isProduction ? 3 : 1,
+  // Production: keep reconnecting with backoff. Dev: give up quickly so a
+  // missing local Redis doesn't spam the console.
+  retryStrategy: isProduction
+    ? (times) => Math.min(times * 200, 5000)
+    : (times) => (times > 3 ? null : 500),
+};
 
+const redis = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL, baseOptions)
+  : new Redis({
+      ...baseOptions,
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: Number(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+    });
 
-try {
-  const Redis = require('ioredis');
+let lastErrorLoggedAt = 0;
+redis.on('error', (err) => {
+  // Throttle: ioredis emits on every failed reconnect attempt.
+  if (Date.now() - lastErrorLoggedAt > 30000) {
+    lastErrorLoggedAt = Date.now();
+    logger.error('🔴 Redis error:', err.message);
+  }
+});
 
-  redis = new Redis({
-    host: '127.0.0.1',
-    port: 6379,
+redis.on('ready', () => {
+  logger.info('🟢 Redis connected');
+});
 
-    // LOCAL SAFE SETTINGS
-    lazyConnect: true,
-    maxRetriesPerRequest: 1,
-    retryStrategy: () => null, // ❌ no reconnect spam
-  });
+redis.connect().catch(() => {
+  // Logged by the 'error' handler; app keeps running without Redis.
+});
 
-  console.log('⚠️ Redis LOCAL mode (optional)');
-
-} catch (err) {
-  console.warn('⚠️ Redis disabled (LOCAL DEV)');
-
-  // NO-OP Redis (APP NEVER CRASHES)
-  redis = {
-    get: async () => null,
-    set: async () => null,
-    del: async () => null,
-    incr: async () => 1,
-    expire: async () => null,
-    exists: async () => 0,
-    info: async () => '',
-  };
-}
-
-
-/* ======================================================
-   🚀 PRODUCTION SERVER CONFIG
-   (USE THIS WHEN DEPLOYING)
-====================================================== */
-
-// try {
-//   const Redis = require('ioredis');
-
-//   redis = new Redis({
-//     host: process.env.REDIS_HOST || '127.0.0.1',
-//     port: process.env.REDIS_PORT
-//       ? Number(process.env.REDIS_PORT)
-//       : 6379,
-
-//     // PRODUCTION SAFE SETTINGS
-//     maxRetriesPerRequest: 5,
-//     enableReadyCheck: true,
-
-//     retryStrategy(times) {
-//       return Math.min(times * 100, 3000);
-//     },
-//   });
-
-//   redis.on('connect', () => {
-//     console.log('🟢 Redis connected (PRODUCTION)');
-//   });
-
-//   redis.on('error', (err) => {
-//     console.error('🔴 Redis error:', err.message);
-//   });
-
-// } catch (err) {
-//   console.error('❌ Redis failed to initialize (PRODUCTION)');
-//   throw err; // ❗ Production SHOULD fail if Redis is missing
-// }
-
-/* ======================================================
-   EXPORT
-====================================================== */
 module.exports = redis;

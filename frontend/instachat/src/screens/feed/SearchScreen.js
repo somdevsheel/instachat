@@ -123,7 +123,15 @@ const SearchScreen = ({ navigation }) => {
         )
       );
 
-      await followUser(userId);
+      const res = await followUser(userId);
+      // Private accounts get a follow *request*; trust the server's answer.
+      setUsers(prev =>
+        prev.map(u =>
+          u._id === userId
+            ? { ...u, isFollowing: !!res?.following, isRequested: !!res?.requested }
+            : u
+        )
+      );
     } catch (err) {
       console.error('Follow failed:', err);
       setUsers(previousUsers); // rollback
@@ -135,6 +143,7 @@ const SearchScreen = ({ navigation }) => {
   ========================= */
   const renderItem = ({ item }) => {
     const isFollowing = item.isFollowing === true;
+    const isRequested = item.isRequested === true;
 
     return (
       <View style={styles.row}>
@@ -163,12 +172,12 @@ const SearchScreen = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.followBtn,
-            isFollowing && styles.followingBtn,
+            (isFollowing || isRequested) && styles.followingBtn,
           ]}
           onPress={() => handleFollowToggle(item._id)}
         >
           <Text style={styles.followText}>
-            {isFollowing ? 'Following' : 'Follow'}
+            {isFollowing ? 'Following' : isRequested ? 'Requested' : 'Follow'}
           </Text>
         </TouchableOpacity>
       </View>

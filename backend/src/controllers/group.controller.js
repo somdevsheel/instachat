@@ -1,5 +1,7 @@
 const Group = require('../models/Group');
 const catchAsync = require('../utils/catchAsync');
+const getPagination = require('../utils/pagination');
+const str = require('../utils/str');
 
 /**
  * POST /api/v1/groups
@@ -8,13 +10,13 @@ exports.createGroup = catchAsync(async (req, res) => {
   const { name, description } = req.body;
   const userId = req.user.id;
 
-  if (!name || !name.trim()) {
+  if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Group name is required' });
   }
 
   const group = await Group.create({
     name: name.trim(),
-    description: description?.trim() || '',
+    description: str(description) || '',
     creator: userId,
     members: [userId],
   });
@@ -30,9 +32,12 @@ exports.createGroup = catchAsync(async (req, res) => {
 exports.getGroups = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
+  const { limit, skip } = getPagination(req.query);
   const groups = await Group.find()
     .populate('creator', 'username profilePicture')
     .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
     .lean();
 
   const withMembership = groups.map((g) => ({

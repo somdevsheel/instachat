@@ -12,6 +12,7 @@ export default function SignupPage() {
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleRequestOtp = async (e) => {
     e.preventDefault();
@@ -38,6 +39,7 @@ export default function SignupPage() {
         password,
         username,
         fullName,
+        acceptedTerms,
       });
       navigate('/login', { replace: true });
     } catch (err) {
@@ -108,7 +110,20 @@ export default function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <button type="submit" disabled={submitting}>
+          <label className="auth-consent">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              required
+            />
+            <span>
+              I'm at least 13 and agree to the{' '}
+              <Link to="/terms" target="_blank">Terms</Link> and{' '}
+              <Link to="/privacy" target="_blank">Privacy Policy</Link>
+            </span>
+          </label>
+          <button type="submit" disabled={submitting || !acceptedTerms}>
             {submitting ? 'Sending code…' : 'Sign up'}
           </button>
         </form>

@@ -90,6 +90,7 @@ export default function EditProfileModal({ profile, onClose }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="form-input"
+            maxLength={30}
           />
 
           <label className="form-label">Bio</label>
@@ -98,6 +99,7 @@ export default function EditProfileModal({ profile, onClose }) {
             onChange={(e) => setBio(e.target.value)}
             className="form-input"
             rows={3}
+            maxLength={150}
           />
 
           <label className="form-label">Location</label>
@@ -107,6 +109,7 @@ export default function EditProfileModal({ profile, onClose }) {
             onChange={(e) => setLocation(e.target.value)}
             className="form-input"
             placeholder="Where are you based?"
+            maxLength={100}
           />
 
           <label className="form-label">Website</label>
@@ -116,6 +119,7 @@ export default function EditProfileModal({ profile, onClose }) {
             onChange={(e) => setWebsite(e.target.value)}
             className="form-input"
             placeholder="yourwebsite.com"
+            maxLength={200}
           />
 
           {error && <div className="auth-error">{error}</div>}

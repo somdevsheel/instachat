@@ -5,6 +5,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import store from './src/redux/store';
+import { onSessionInvalid } from './src/services/api';
+import { logout } from './src/redux/slices/authSlice';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initBackgroundUpload } from './src/services/backgroundUpload';
 import { initSocket, disconnectSocket } from './src/services/socket';
@@ -14,6 +16,18 @@ import {
 } from './src/services/pushNotifications';
 import { navigate } from './src/navigation/navigationRef';
 import { ROUTES } from './src/navigation/routes.constants';
+
+// Session revoked elsewhere (logout everywhere, password change, ban):
+// return to the login screen instead of failing every request.
+onSessionInvalid((message) => {
+  if (!store.getState().auth.isAuthenticated) return;
+  store.dispatch(logout());
+  Toast.show({
+    type: 'info',
+    text1: 'Signed out',
+    text2: message || 'Please log in again.',
+  });
+});
 
 // Socket initialization component
 const SocketInitializer = () => {

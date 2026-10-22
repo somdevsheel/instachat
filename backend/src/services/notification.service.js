@@ -1,11 +1,14 @@
 const Notification = require('../models/notification.model');
 const { getIO, getSocketIdByUserId } = require('./socket.service');
 const pushService = require('./push.service');
+const graph = require('./graph.service');
+const logger = require('../utils/logger');
 
 const PUSH_BODY_BY_TYPE = {
   like: 'liked your post',
   comment: 'commented on your post',
   follow: 'started following you',
+  follow_request: 'requested to follow you',
   message: 'sent you a message',
   mention: 'mentioned you',
   repost: 'reposted your content',
@@ -19,6 +22,12 @@ exports.createNotification = async (data) => {
 
   // Don't notify yourself
   if (recipient.toString() === sender.toString()) {
+    return null;
+  }
+
+  // No notifications between users where either has blocked the other
+  // (e.g. @mentions on a third party's post).
+  if (await graph.isBlockedEitherWay(recipient.toString(), sender.toString())) {
     return null;
   }
 
@@ -60,7 +69,7 @@ exports.createNotification = async (data) => {
         notificationType: type,
       },
     })
-    .catch((err) => console.error('Push notification error:', err.message));
+    .catch((err) => logger.error('Push notification error:', err.message));
 
   return notification;
 };

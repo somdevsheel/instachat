@@ -2,6 +2,9 @@ const Post = require('../models/Post');
 const User = require('../models/user.model');
 const Comment = require('../models/Comment');
 const Reel = require('../models/Reel');
+const graph = require('./graph.service');
+const access = require('./access.service');
+const str = require('../utils/str');
 
 const REPOST_POPULATE = {
   path: 'repostOf',
@@ -32,23 +35,33 @@ const queryPosts = async (
   const skip = (page - 1) * limit;
 
   const me = currentUserId
-    ? await User.findById(currentUserId).select('savedPosts following closeFriends')
+    ? await User.findById(currentUserId).select('savedPosts')
     : null;
 
   const query = {};
   if (filter === 'following' && me) {
-    query.user = { $in: [...me.following, currentUserId] };
+    query.user = { $in: [...(await graph.getFollowingIds(currentUserId)), currentUserId] };
   } else if (filter === 'close_friends' && me) {
-    query.user = { $in: [...me.closeFriends, currentUserId] };
+    query.user = { $in: [...(await graph.getCloseFriendIds(currentUserId)), currentUserId] };
   }
 
-  const posts = await Post.find(query)
-    .populate('user', 'username name profilePicture')
-    .populate(REPOST_POPULATE)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  // Leave out blocked users, private accounts I don't follow, and
+  // people I've muted. (Reposts of hidden-but-not-muted authors are
+  // redacted below; muted authors' content is simply skipped.)
+  const hidden = currentUserId ? await access.getHiddenAuthorIds(currentUserId) : [];
+  const excluded = currentUserId ? await access.getFeedExcludedAuthorIds(currentUserId) : [];
+  if (excluded.length) query.user = { ...(query.user || {}), $nin: excluded };
+
+  const posts = access.redactHiddenReposts(
+    await Post.find(query)
+      .populate('user', 'username name profilePicture')
+      .populate(REPOST_POPULATE)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    hidden
+  );
 
   if (!currentUserId) return posts;
 
@@ -78,8 +91,12 @@ const getPostById = async (postId, currentUserId = null) => {
 
   if (!post) return null;
 
+  const [visible] = currentUserId
+    ? access.redactHiddenReposts([post], await access.getHiddenAuthorIds(currentUserId))
+    : [post];
+
   return {
-    ...post,
+    ...visible,
     isLiked: currentUserId
       ? post.likes?.some(
           (id) => id.toString() === currentUserId.toString()
@@ -99,7 +116,8 @@ const deletePostById = async (postId) => {
     throw new Error('Post not found');
   }
 
-  await Post.findByIdAndDelete(postId);
+  // Media in S3 (+ variants), comments, reposts, saves, notifications.
+  await require('./contentDeletion.service').deletePost(postId);
   return post;
 };
 
@@ -162,7 +180,7 @@ const repostContent = async (contentId, contentType, userId, caption = '') => {
 
   const repost = await Post.create({
     user: userId,
-    caption: caption?.trim() || '',
+    caption: str(caption) || '',
     repostOf: targetId,
     repostOfModel: targetModel,
   });
@@ -180,13 +198,15 @@ const repostContent = async (contentId, contentType, userId, caption = '') => {
  * ======================================================
  */
 const getUserPosts = async (userId, currentUserId = null) => {
-  const posts = await Post.find({ user: userId })
+  let posts = await Post.find({ user: userId })
     .populate('user', 'username name profilePicture')
     .populate(REPOST_POPULATE)
     .sort({ createdAt: -1 })
     .lean();
 
   if (!currentUserId) return posts;
+
+  posts = access.redactHiddenReposts(posts, await access.getHiddenAuthorIds(currentUserId));
 
   return posts.map((post) => ({
     ...post,

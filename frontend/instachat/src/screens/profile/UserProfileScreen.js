@@ -20,6 +20,7 @@ import api from '../../services/api';
 import { ROUTES } from '../../navigation/routes.constants';
 import usePullToRefresh from '../../hooks/usePullToRefresh';
 import colors, { gradients } from '../../theme/colors';
+import PostGridTile from '../../components/molecules/PostGridTile';
 
 const { width } = Dimensions.get('window');
 const IMAGE_SIZE = (width - 4) / 3;
@@ -31,6 +32,7 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [profileUser, setProfileUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isRequested, setIsRequested] = useState(false); // private accounts
   const [canMessage, setCanMessage] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [activeTab, setActiveTab] = useState('posts');
@@ -45,6 +47,7 @@ const UserProfileScreen = ({ route, navigation }) => {
 
       setProfileUser(data);
       setIsFollowing(data.isFollowing === true);
+      setIsRequested(data.isRequested === true);
       setCanMessage(data.canMessage === true || data.isFollowing === true);
       setFollowersCount(data.followersCount || 0);
     } catch (err) {
@@ -77,6 +80,20 @@ const UserProfileScreen = ({ route, navigation }) => {
 
     const wasFollowing = isFollowing;
 
+    // Private account I don't follow: send / cancel a follow request.
+    if (!wasFollowing && profileUser.isPrivate) {
+      const wasRequested = isRequested;
+      try {
+        setIsRequested(!wasRequested);
+        const res = await api.post(`/users/follow/${profileUser._id}`);
+        setIsRequested(res.data.requested === true);
+      } catch (err) {
+        console.error('Follow request error:', err);
+        setIsRequested(wasRequested);
+      }
+      return;
+    }
+
     try {
       // Optimistic update
       setIsFollowing(!wasFollowing);
@@ -92,6 +109,11 @@ const UserProfileScreen = ({ route, navigation }) => {
       // Update with actual server response if available
       if (res.data.followersCount !== undefined) {
         setFollowersCount(res.data.followersCount);
+      }
+
+      // Unfollowing a private account locks its content again.
+      if (wasFollowing && profileUser.isPrivate) {
+        fetchProfile();
       }
     } catch (err) {
       console.error('Follow error:', err);
@@ -131,24 +153,14 @@ const UserProfileScreen = ({ route, navigation }) => {
      RENDER GRID ITEM
   ========================= */
   const renderGridItem = ({ item, index }) => (
-    <TouchableOpacity
+    <PostGridTile
+      item={item}
       style={[
         styles.gridItem,
         index % 3 !== 2 && styles.gridItemMargin,
       ]}
-      activeOpacity={0.9}
       onPress={() => navigation.navigate(ROUTES.POST_DETAIL, { postId: item._id })}
-    >
-      <Image
-        source={{ uri: item.media?.variants?.original }}
-        style={styles.gridImage}
-      />
-      {item.media?.type === 'video' && (
-        <View style={styles.videoIndicator}>
-          <Ionicons name="play" size={18} color="#fff" />
-        </View>
-      )}
-    </TouchableOpacity>
+    />
   );
 
   /* =========================
@@ -276,15 +288,15 @@ const UserProfileScreen = ({ route, navigation }) => {
           <TouchableOpacity
             style={[
               styles.actionBtn,
-              isFollowing ? styles.followingBtn : styles.followBtn,
+              isFollowing || isRequested ? styles.followingBtn : styles.followBtn,
             ]}
             onPress={handleFollowToggle}
           >
             <Text style={[
               styles.actionBtnText,
-              isFollowing && styles.followingBtnText,
+              (isFollowing || isRequested) && styles.followingBtnText,
             ]}>
-              {isFollowing ? 'Following' : 'Follow'}
+              {isFollowing ? 'Following' : isRequested ? 'Requested' : 'Follow'}
             </Text>
           </TouchableOpacity>
 
@@ -348,7 +360,15 @@ const UserProfileScreen = ({ route, navigation }) => {
 
         {/* POST GRID */}
         <View style={styles.gridContainer}>
-          {profileUser.posts?.length > 0 ? (
+          {profileUser.isLocked ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="lock-closed-outline" size={60} color={colors.textFaint} />
+              <Text style={styles.emptyTitle}>This account is private</Text>
+              <Text style={styles.lockedText}>
+                Follow this account to see their photos and videos.
+              </Text>
+            </View>
+          ) : profileUser.posts?.length > 0 ? (
             <FlatList
               data={profileUser.posts}
               renderItem={renderGridItem}
@@ -568,5 +588,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 22,
     fontWeight: '700',
+  },
+  lockedText: {
+    color: colors.textFaint,
+    marginTop: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });

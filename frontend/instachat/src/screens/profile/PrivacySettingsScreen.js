@@ -408,7 +408,7 @@ const PrivacySettingsScreen = ({ navigation }) => {
         <ToggleRow
           icon="ellipse-outline"
           label="Activity status"
-          description="Allow accounts you follow and anyone you message to see when you were last active or are currently active. When this is turned off, you won't be able to see the activity status of other accounts."
+          description="Let other people see when you're active or were last active. When this is turned off, you won't be able to see the activity status of other accounts."
           value={settings.activityStatusVisible}
           onToggle={() => handleToggle('activityStatusVisible')}
           disabled={updating}

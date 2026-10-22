@@ -1,8 +1,23 @@
 const socketIo = require('socket.io');
-const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
+const Chat = require('../models/chat.model');
 const redis = require('../config/redis');
+const verifyAuthToken = require('../utils/verifyAuthToken');
+const { createAdapter } = require('@socket.io/redis-adapter');
+
+/**
+ * With more than one server process (PM2 cluster, several instances),
+ * a user's socket can be on any of them. The Redis adapter relays
+ * io.to(room).emit(...) across processes so events still arrive.
+ *
+ *   SOCKET_ADAPTER=redis|memory   (default: redis in production)
+ */
+const useRedisAdapter =
+  (process.env.SOCKET_ADAPTER ||
+    (process.env.NODE_ENV === 'production' ? 'redis' : 'memory')) === 'redis';
 const { corsOriginValidator } = require('../config/cors');
+const logger = require('../utils/logger');
 
 let io;
 
@@ -41,6 +56,21 @@ const initSocket = (server) => {
     },
   });
 
+  if (useRedisAdapter) {
+    const pubClient = redis.duplicate();
+    const subClient = redis.duplicate();
+    [pubClient, subClient].forEach((c) =>
+      c.on('error', (err) => logger.error('🔴 Socket.IO Redis adapter error:', err.message))
+    );
+    io.adapter(
+      createAdapter(pubClient, subClient, {
+        // Channel prefix; set per environment if several share one Redis.
+        key: process.env.SOCKET_ADAPTER_KEY || 'socket.io',
+      })
+    );
+    logger.info('🔁 Socket.IO using Redis adapter');
+  }
+
   /**
    * =========================
    * AUTH MIDDLEWARE (JWT)
@@ -57,14 +87,7 @@ const initSocket = (server) => {
         return next(new Error('Authentication error: Token missing'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select('-password');
-
-      if (!user) {
-        return next(new Error('Authentication error: User not found'));
-      }
-
-      socket.user = user;
+      socket.user = await verifyAuthToken(token);
       next();
     } catch {
       next(new Error('Authentication error: Invalid token'));
@@ -78,7 +101,7 @@ const initSocket = (server) => {
    */
   io.on('connection', async (socket) => {
     const userId = socket.user._id.toString();
-    console.log(`⚡ Socket Connected: ${socket.user.username} (${socket.id})`);
+    logger.debug(`⚡ Socket Connected: ${socket.user.username} (${socket.id})`);
 
     // Personal room
     socket.join(userId);
@@ -106,7 +129,7 @@ const initSocket = (server) => {
      * JOIN CHAT
      */
     socket.on('join_chat', async (chatId) => {
-      if (!chatId) return;
+      if (!chatId || !mongoose.isValidObjectId(chatId)) return;
 
       const allowed = await allowSocketEvent(
         userId,
@@ -116,14 +139,32 @@ const initSocket = (server) => {
       );
 
       if (!allowed) return;
-      socket.join(chatId);
+
+      // Only participants may join a chat room — otherwise anyone could
+      // listen to typing events for arbitrary chats.
+      try {
+        const isParticipant = await Chat.exists({
+          _id: chatId,
+          participants: userId,
+        });
+        if (!isParticipant) return;
+      } catch {
+        return;
+      }
+
+      socket.join(chatId.toString());
+    });
+
+    socket.on('leave_chat', (chatId) => {
+      if (!chatId) return;
+      socket.leave(chatId.toString());
     });
 
     /**
      * TYPING
      */
     socket.on('typing', async (chatId) => {
-      if (!chatId) return;
+      if (!chatId || !socket.rooms.has(chatId.toString())) return;
 
       const allowed = await allowSocketEvent(
         userId,
@@ -141,52 +182,20 @@ const initSocket = (server) => {
     });
 
     socket.on('stop_typing', (chatId) => {
-      if (!chatId) return;
-      socket.to(chatId).emit('stop_typing', { userId });
+      if (!chatId || !socket.rooms.has(chatId.toString())) return;
+      socket.to(chatId.toString()).emit('stop_typing', { userId });
     });
 
-    /**
-     * NEW MESSAGE
-     */
-    socket.on('new_message', async (message) => {
-      if (
-        !message ||
-        !message.chat ||
-        !message.chat.users ||
-        typeof message.text !== 'string'
-      ) {
-        return;
-      }
-
-      const allowed = await allowSocketEvent(
-        userId,
-        'new_message',
-        20,
-        10
-      );
-
-      if (!allowed) return;
-
-      message.chat.users.forEach((chatUser) => {
-        const chatUserId = chatUser._id.toString();
-        if (chatUserId === userId) return;
-
-        io.to(chatUserId).emit('message_received', {
-          _id: message._id,
-          chat: message.chat._id || message.chat,
-          sender: message.sender,
-          text: message.text,
-          createdAt: message.createdAt,
-          encryptionMode: 'plain',
-        });
-      });
-    });
+    // NOTE: messages are delivered server-side by the REST sendMessage
+    // controller (which persists + emits `message_received`). There is
+    // intentionally no client-driven `new_message` relay: it let any
+    // client push forged messages to arbitrary users.
 
     /**
      * DISCONNECT
      */
     socket.on('disconnect', async () => {
-      console.log(`🔌 Socket Disconnected: ${socket.user.username}`);
+      logger.debug(`🔌 Socket Disconnected: ${socket.user.username}`);
 
       if (socket.presenceInterval) {
         clearInterval(socket.presenceInterval);

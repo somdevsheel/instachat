@@ -10,7 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Linking,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { TERMS_URL, PRIVACY_URL } from "../../constants/legal";
 import { useDispatch } from "react-redux";
 import { ROUTES } from "../../navigation/routes.constants";
 import colors from "../../theme/colors";
@@ -24,10 +27,19 @@ const SignupScreen = ({ navigation }) => {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleSendOtp = async () => {
   if (!fullName || !username || !email) {
     Alert.alert("Missing details", "Please fill all fields");
+    return;
+  }
+
+  if (!acceptedTerms) {
+    Alert.alert(
+      "Please confirm",
+      "You need to be at least 13 and agree to the Terms and Privacy Policy to create an account."
+    );
     return;
   }
 
@@ -44,6 +56,7 @@ const SignupScreen = ({ navigation }) => {
       email: email.trim().toLowerCase(),
       fullName: fullName.trim(),
       username: username.trim().toLowerCase(),
+      acceptedTerms: true,
     });
   } catch (error) {
     Alert.alert(
@@ -91,6 +104,29 @@ const SignupScreen = ({ navigation }) => {
           autoCapitalize="none"
           keyboardType="email-address"
         />
+
+        <TouchableOpacity
+          style={styles.consentRow}
+          onPress={() => setAcceptedTerms((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: acceptedTerms }}
+        >
+          <Ionicons
+            name={acceptedTerms ? "checkbox" : "square-outline"}
+            size={22}
+            color={acceptedTerms ? colors.primary : colors.textSecondary}
+          />
+          <Text style={styles.consentText}>
+            I'm at least 13 and agree to the{" "}
+            <Text style={styles.loginHighlight} onPress={() => Linking.openURL(TERMS_URL)}>
+              Terms
+            </Text>{" "}
+            and{" "}
+            <Text style={styles.loginHighlight} onPress={() => Linking.openURL(PRIVACY_URL)}>
+              Privacy Policy
+            </Text>
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[
@@ -180,6 +216,20 @@ const styles = StyleSheet.create({
   loginText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 16,
+  },
+
+  consentText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
   },
 
   loginHighlight: {

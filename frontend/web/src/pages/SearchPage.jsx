@@ -52,7 +52,15 @@ export default function SearchPage() {
       prev.map((u) => (u._id === userId ? { ...u, isFollowing: !u.isFollowing } : u))
     );
     try {
-      await userApi.followUser(userId);
+      const res = await userApi.followUser(userId);
+      // Private accounts get a follow *request*; trust the server's answer.
+      setResults((prev) =>
+        prev.map((u) =>
+          u._id === userId
+            ? { ...u, isFollowing: !!res?.following, isRequested: !!res?.requested }
+            : u
+        )
+      );
     } catch (err) {
       // revert on failure
       setResults((prev) =>
@@ -93,10 +101,10 @@ export default function SearchPage() {
               </div>
             </button>
             <button
-              className={`follow-button ${u.isFollowing ? 'following' : ''}`}
+              className={`follow-button ${u.isFollowing || u.isRequested ? 'following' : ''}`}
               onClick={() => handleFollow(u._id)}
             >
-              {u.isFollowing ? 'Following' : 'Follow'}
+              {u.isFollowing ? 'Following' : u.isRequested ? 'Requested' : 'Follow'}
             </button>
           </li>
         ))}
