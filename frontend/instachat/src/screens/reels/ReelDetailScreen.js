@@ -67,7 +67,13 @@ const ReelDetailScreen = ({ route, navigation }) => {
       }
     } catch (err) {
       console.error('Error fetching reel:', err);
-      setError('Failed to load reel');
+      setError(
+        (err?.response?.data?.code === 'PRIVATE_ACCOUNT'
+          ? 'This account is private. Follow them to see their reels.'
+          : err?.response?.status === 404
+            ? 'This reel is no longer available.'
+            : 'Failed to load reel')
+      );
     } finally {
       setLoading(false);
     }

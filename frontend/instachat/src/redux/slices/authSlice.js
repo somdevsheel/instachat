@@ -239,6 +239,22 @@ import { login, register, getMe, verify2FA as verify2FAApi } from '../../api/Aut
 import { initSocket, disconnectSocket } from '../../services/socket';
 import { cacheProfileImage } from '../../utils/profileImageCache';
 
+// Revoke this session server-side (so the token stops working even if
+// it was copied), then clear local storage. Reads the token first since
+// clearing happens right after. Best-effort: offline logout still
+// clears locally.
+const endSession = async () => {
+  try {
+    const token = await Storage.getToken();
+    if (token) {
+      api
+        .post('/auth/logout', null, { headers: { Authorization: `Bearer ${token}` } })
+        .catch(() => {});
+    }
+  } catch {}
+  await Storage.clearSession();
+};
+
 /* =========================
    ASYNC THUNKS
 ========================= */
@@ -421,7 +437,7 @@ const authSlice = createSlice({
       state.twoFactorEmail = null;
       state.twoFactorTempUserId = null;
 
-      Storage.clearSession();
+      endSession();
       disconnectSocket();
     },
 

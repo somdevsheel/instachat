@@ -69,6 +69,7 @@ StorySchema.pre('validate', function (next) {
 });
 
 StorySchema.index({ user: 1, createdAt: -1 });
-StorySchema.index({ expiresAt: 1 });
+// (expiresAt already has its TTL index above — a second plain index on
+// the same key conflicts and fails to build.)
 
 module.exports = mongoose.model('Story', StorySchema);

@@ -77,7 +77,15 @@ const FollowingListScreen = ({ route, navigation }) => {
     }
 
     try {
-      await api.post(`/users/follow/${targetUserId}`);
+      const res = await api.post(`/users/follow/${targetUserId}`);
+      // Private accounts get a follow *request*; trust the server's answer.
+      setUsers(prev =>
+        prev.map(u =>
+          u._id === targetUserId
+            ? { ...u, isFollowing: !!res.data?.following, isRequested: !!res.data?.requested }
+            : u
+        )
+      );
     } catch (err) {
       console.error('Follow toggle error:', err);
       
@@ -140,12 +148,12 @@ const FollowingListScreen = ({ route, navigation }) => {
               <TouchableOpacity
                 style={[
                   styles.followBtn,
-                  item.isFollowing && styles.followingBtn,
+                  (item.isFollowing || item.isRequested) && styles.followingBtn,
                 ]}
                 onPress={() => handleFollowToggle(item._id)}
               >
                 <Text style={styles.followText}>
-                  {item.isFollowing ? 'Following' : 'Follow'}
+                  {item.isFollowing ? 'Following' : item.isRequested ? 'Requested' : 'Follow'}
                 </Text>
               </TouchableOpacity>
             )}

@@ -1,363 +1,3 @@
-// const catchAsync = require('../utils/catchAsync');
-// const Chat = require('../models/chat.model');
-// const Message = require('../models/message.model');
-// const User = require('../models/user.model');
-// const { getIO } = require('../services/socket.service');
-// const { getUserStatus } = require('../utils/userStatus.util');
-
-// /**
-//  * ======================================================
-//  * GET OR CREATE CHAT (1-1)
-//  * ======================================================
-//  */
-// exports.getOrCreateChat = catchAsync(async (req, res) => {
-//   const { userId } = req.params;
-//   const currentUserId = req.user.id;
-
-//   if (currentUserId === userId) {
-//     return res.status(400).json({
-//       success: false,
-//       message: 'Cannot chat with yourself',
-//     });
-//   }
-
-//   const receiverExists = await User.exists({ _id: userId });
-//   if (!receiverExists) {
-//     return res.status(404).json({
-//       success: false,
-//       message: 'User not found',
-//     });
-//   }
-
-//   let chat = await Chat.findOne({
-//     isGroup: false,
-//     participants: { $size: 2, $all: [currentUserId, userId] },
-//   })
-//     .populate('participants', 'username profilePicture lastSeen')
-//     .populate({
-//       path: 'lastMessage',
-//       populate: [
-//         { path: 'sender receiver', select: 'username profilePicture' },
-//         {
-//           path: 'story',
-//           select: 'media user createdAt',
-//           populate: { path: 'user', select: 'username profilePicture' },
-//         },
-//       ],
-//     });
-
-//   if (!chat) {
-//     chat = await Chat.create({
-//       isGroup: false,
-//       participants: [currentUserId, userId],
-//       encryptionMode: 'plain',
-//     });
-
-//     chat = await Chat.findById(chat._id)
-//       .populate('participants', 'username profilePicture lastSeen')
-//       .populate({
-//         path: 'lastMessage',
-//         populate: [
-//           { path: 'sender receiver', select: 'username profilePicture' },
-//           {
-//             path: 'story',
-//             select: 'media user createdAt',
-//             populate: { path: 'user', select: 'username profilePicture' },
-//           },
-//         ],
-//       });
-//   }
-
-//   const participantsWithStatus = await Promise.all(
-//     chat.participants.map(async (user) => {
-//       const status = await getUserStatus(user);
-//       return { ...user.toObject(), ...status };
-//     })
-//   );
-
-//   res.status(200).json({
-//     success: true,
-//     data: {
-//       ...chat.toObject(),
-//       participants: participantsWithStatus,
-//     },
-//   });
-// });
-
-// /**
-//  * ======================================================
-//  * SEND MESSAGE (NORMAL + STORY REPLY)
-//  * ======================================================
-//  */
-// exports.sendMessage = catchAsync(async (req, res) => {
-//   const { chatId, receiverId, text, storyId } = req.body;
-//   const senderId = req.user.id;
-
-//   if (!chatId || !receiverId || typeof text !== 'string') {
-//     return res.status(400).json({
-//       success: false,
-//       message: 'chatId, receiverId and text are required',
-//     });
-//   }
-
-//   const chat = await Chat.findById(chatId).populate(
-//     'participants',
-//     '_id username profilePicture lastSeen'
-//   );
-
-//   if (!chat) {
-//     return res.status(404).json({ success: false, message: 'Chat not found' });
-//   }
-
-//   const receiver = chat.participants.find(
-//     (u) => u._id.toString() === receiverId
-//   );
-
-//   if (!receiver) {
-//     return res.status(400).json({
-//       success: false,
-//       message: 'Receiver not in this chat',
-//     });
-//   }
-
-//   let message = await Message.create({
-//     chat: chatId,
-//     sender: senderId,
-//     receiver: receiverId,
-//     text,
-//     story: storyId || null,
-//     encryptionMode: 'plain',
-//     type: 'text',
-//     readBy: [{ user: senderId }],
-//   });
-
-//   message = await message.populate([
-//     { path: 'sender receiver', select: 'username profilePicture' },
-//     {
-//       path: 'story',
-//       select: 'media user createdAt',
-//       populate: { path: 'user', select: 'username profilePicture' },
-//     },
-//   ]);
-
-//   chat.lastMessage = message._id;
-//   await chat.save();
-
-//   const io = getIO();
-  
-//   // Emit message to receiver
-//   io.to(receiverId.toString()).emit('message_received', {
-//     _id: message._id,
-//     chat: chatId,
-//     sender: message.sender,
-//     receiver: message.receiver,
-//     text: message.text,
-//     story: message.story,
-//     createdAt: message.createdAt,
-//   });
-
-//   // ✅ EMIT UNREAD COUNT UPDATE TO RECEIVER
-//   const unreadCount = await Message.countDocuments({
-//     receiver: receiverId,
-//     'readBy.user': { $ne: receiverId },
-//   });
-
-//   io.to(receiverId.toString()).emit('unread_count_updated', {
-//     count: unreadCount,
-//   });
-
-//   return res.status(201).json({
-//     success: true,
-//     data: message,
-//   });
-// });
-
-// /**
-//  * ======================================================
-//  * MARK MESSAGES READ
-//  * ======================================================
-//  */
-// exports.markMessagesRead = catchAsync(async (req, res) => {
-//   const { chatId } = req.params;
-//   const readerId = req.user.id;
-
-//   const messages = await Message.find({
-//     chat: chatId,
-//     sender: { $ne: readerId },
-//     'readBy.user': { $ne: readerId },
-//   });
-
-//   if (!messages.length) {
-//     return res.status(200).json({ success: true });
-//   }
-
-//   await Message.updateMany(
-//     { _id: { $in: messages.map((m) => m._id) } },
-//     { $push: { readBy: { user: readerId } } }
-//   );
-
-//   const io = getIO();
-//   messages.forEach((msg) => {
-//     io.to(msg.sender.toString()).emit('messages_read', {
-//       chatId,
-//       readerId,
-//     });
-//   });
-
-//   // ✅ EMIT UPDATED UNREAD COUNT TO READER
-//   const unreadCount = await Message.countDocuments({
-//     receiver: readerId,
-//     'readBy.user': { $ne: readerId },
-//   });
-
-//   io.to(readerId.toString()).emit('unread_count_updated', {
-//     count: unreadCount,
-//   });
-
-//   res.status(200).json({ success: true });
-// });
-
-// /**
-//  * ======================================================
-//  * GET UNREAD MESSAGE COUNT
-//  * ======================================================
-//  */
-// exports.getUnreadCount = catchAsync(async (req, res) => {
-//   const userId = req.user.id;
-
-//   const count = await Message.countDocuments({
-//     receiver: userId,
-//     'readBy.user': { $ne: userId },
-//   });
-
-//   res.status(200).json({
-//     success: true,
-//     data: { count },
-//   });
-// });
-
-// /**
-//  * ======================================================
-//  * DELETE MESSAGE
-//  * ======================================================
-//  */
-// exports.deleteMessage = catchAsync(async (req, res) => {
-//   const { messageId } = req.params;
-//   const { mode } = req.body;
-//   const userId = req.user.id;
-
-//   const message = await Message.findById(messageId);
-//   if (!message) {
-//     return res.status(404).json({ success: false, message: 'Message not found' });
-//   }
-
-//   if (mode === 'everyone') {
-//     if (message.sender.toString() !== userId) {
-//       return res.status(403).json({ success: false, message: 'Not allowed' });
-//     }
-
-//     message.deletedForEveryone = true;
-//     message.deletedAt = new Date();
-//     await message.save();
-
-//     const io = getIO();
-//     io.to(message.receiver.toString()).emit('message_deleted', {
-//       messageId,
-//       chatId: message.chat,
-//       mode: 'everyone',
-//     });
-
-//     return res.status(200).json({ success: true });
-//   }
-
-//   if (mode === 'me') {
-//     if (!message.deletedFor.includes(userId)) {
-//       message.deletedFor.push(userId);
-//       await message.save();
-//     }
-//     return res.status(200).json({ success: true });
-//   }
-
-//   res.status(400).json({ success: false, message: 'Invalid delete mode' });
-// });
-
-// /**
-//  * ======================================================
-//  * GET CHAT HISTORY
-//  * ======================================================
-//  */
-// exports.getChatHistory = catchAsync(async (req, res) => {
-//   const { chatId } = req.params;
-//   const userId = req.user.id;
-
-//   const messages = await Message.find({
-//     chat: chatId,
-//     deletedForEveryone: false,
-//     deletedFor: { $ne: userId },
-//   })
-//     .populate('sender receiver', 'username profilePicture')
-//     .populate({
-//       path: 'story',
-//       select: 'media user createdAt',
-//       populate: { path: 'user', select: 'username profilePicture' },
-//     })
-//     .sort({ createdAt: 1 });
-
-//   res.status(200).json({
-//     success: true,
-//     results: messages.length,
-//     data: messages,
-//   });
-// });
-
-// /**
-//  * ======================================================
-//  * GET RECENT CHATS
-//  * ======================================================
-//  */
-// exports.getRecentChats = catchAsync(async (req, res) => {
-//   const userId = req.user.id;
-
-//   const chats = await Chat.find({ participants: userId })
-//     .populate('participants', 'username profilePicture lastSeen')
-//     .populate({
-//       path: 'lastMessage',
-//       populate: [
-//         { path: 'sender receiver', select: 'username profilePicture' },
-//         {
-//           path: 'story',
-//           select: 'media user createdAt',
-//           populate: { path: 'user', select: 'username profilePicture' },
-//         },
-//       ],
-//     })
-//     .sort({ updatedAt: -1 });
-
-//   const chatsWithStatus = await Promise.all(
-//     chats.map(async (chat) => {
-//       const participantsWithStatus = await Promise.all(
-//         chat.participants.map(async (user) => {
-//           const status = await getUserStatus(user);
-//           return { ...user.toObject(), ...status };
-//         })
-//       );
-
-//       return { ...chat.toObject(), participants: participantsWithStatus };
-//     })
-//   );
-
-//   res.status(200).json({
-//     success: true,
-//     data: chatsWithStatus,
-//   });
-// });
-
-
-
-
-
-
-
 const catchAsync = require('../utils/catchAsync');
 const Chat = require('../models/chat.model');
 const Message = require('../models/message.model');
@@ -368,10 +8,52 @@ const Note = require('../models/Note');
 const { getIO } = require('../services/socket.service');
 const { getUserStatus } = require('../utils/userStatus.util');
 const pushService = require('../services/push.service');
+const access = require('../services/access.service');
+const { collectMediaKeys, deleteS3Keys } = require('../utils/s3Media');
 
 const CDN_BASE_URL =
   process.env.CDN_BASE_URL ||
   `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`;
+
+const mongoose = require('mongoose');
+const { verifyUploadedMedia } = require('../utils/verifyUpload');
+const logger = require('../utils/logger');
+
+/**
+ * "Read receipts" privacy setting, as the app describes it:
+ * - if a user turns it off, others can't see that they've read a message
+ * - and they can't see anyone else's read receipts either (reciprocal)
+ * - group chats always show read receipts
+ * Entries are still stored, so unread counts keep working.
+ */
+const getReceiptsOffIds = async (userIds) => {
+  if (!userIds.length) return new Set();
+  const rows = await User.find({ _id: { $in: userIds }, showReadReceipts: false })
+    .select('_id')
+    .lean();
+  return new Set(rows.map((u) => u._id.toString()));
+};
+
+const redactReadBy = (message, viewer, receiptsOff, isGroup) => {
+  if (!message || !Array.isArray(message.readBy) || isGroup) return message;
+  const viewerId = String(viewer._id);
+  const viewerOff = viewer.showReadReceipts === false;
+  if (!viewerOff && !receiptsOff.size) return message;
+  return {
+    ...message,
+    readBy: message.readBy.filter((r) => {
+      const reader = (r.user?._id || r.user)?.toString();
+      if (reader === viewerId) return true;
+      if (viewerOff) return false;
+      return !receiptsOff.has(reader);
+    }),
+  };
+};
+
+const isChatParticipant = async (chatId, userId) => {
+  if (!mongoose.isValidObjectId(chatId)) return false;
+  return !!(await Chat.exists({ _id: chatId, participants: userId }));
+};
 
 /**
  * ======================================================
@@ -397,11 +79,13 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
     });
   }
 
+  await access.assertNotBlocked(currentUserId, userId);
+
   let chat = await Chat.findOne({
     isGroup: false,
     participants: { $size: 2, $all: [currentUserId, userId] },
   })
-    .populate('participants', 'username profilePicture lastSeen')
+    .populate('participants', 'username profilePicture lastSeen activityStatusVisible')
     .populate({
       path: 'lastMessage',
       populate: [
@@ -432,7 +116,7 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
     });
 
     chat = await Chat.findById(chat._id)
-      .populate('participants', 'username profilePicture lastSeen')
+      .populate('participants', 'username profilePicture lastSeen activityStatusVisible')
       .populate({
         path: 'lastMessage',
         populate: [
@@ -458,7 +142,7 @@ exports.getOrCreateChat = catchAsync(async (req, res) => {
 
   const participantsWithStatus = await Promise.all(
     chat.participants.map(async (user) => {
-      const status = await getUserStatus(user);
+      const status = await getUserStatus(user, req.user);
       return { ...user.toObject(), ...status };
     })
   );
@@ -520,6 +204,8 @@ exports.sendMessage = catchAsync(async (req, res) => {
       });
     }
 
+    await verifyUploadedMedia(attachment.originalKey, senderId, attachment.type);
+
     attachmentDoc = {
       type: attachment.type,
       originalKey: attachment.originalKey,
@@ -531,11 +217,15 @@ exports.sendMessage = catchAsync(async (req, res) => {
 
   const chat = await Chat.findById(chatId).populate(
     'participants',
-    '_id username profilePicture lastSeen'
+    '_id username profilePicture lastSeen activityStatusVisible'
   );
 
   if (!chat) {
     return res.status(404).json({ success: false, message: 'Chat not found' });
+  }
+
+  if (!chat.participants.some((u) => u._id.toString() === senderId)) {
+    return res.status(403).json({ success: false, message: 'Not a participant of this chat' });
   }
 
   const receiver = chat.participants.find(
@@ -547,6 +237,24 @@ exports.sendMessage = catchAsync(async (req, res) => {
       success: false,
       message: 'Receiver not in this chat',
     });
+  }
+
+  await access.assertNotBlocked(senderId, receiverId);
+
+  // Shared posts/reels are embedded in the message, so both sides must
+  // be allowed to see them (no leaking private posts via DM).
+  if (sharedPostId || sharedReelId) {
+    const Model = sharedPostId ? Post : Reel;
+    const contentId = sharedPostId || sharedReelId;
+    await access.loadViewable(Model, contentId, senderId);
+    try {
+      await access.loadViewable(Model, contentId, receiverId);
+    } catch (err) {
+      return res.status(403).json({
+        success: false,
+        message: "The recipient can't see this content",
+      });
+    }
   }
 
   let sharedPost = null;
@@ -654,7 +362,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
         senderUsername: message.sender.username,
       },
     })
-    .catch((err) => console.error('Push notification error:', err.message));
+    .catch((err) => logger.error('Push notification error:', err.message));
 
   return res.status(201).json({
     success: true,
@@ -670,6 +378,10 @@ exports.sendMessage = catchAsync(async (req, res) => {
 exports.markMessagesRead = catchAsync(async (req, res) => {
   const { chatId } = req.params;
   const readerId = req.user.id;
+
+  if (!(await isChatParticipant(chatId, readerId))) {
+    return res.status(404).json({ success: false, message: 'Chat not found' });
+  }
 
   const messages = await Message.find({
     chat: chatId,
@@ -687,12 +399,19 @@ exports.markMessagesRead = catchAsync(async (req, res) => {
   );
 
   const io = getIO();
-  messages.forEach((msg) => {
-    io.to(msg.sender.toString()).emit('messages_read', {
-      chatId,
-      readerId,
-    });
-  });
+  // Read receipts (1:1 chats): sent only if neither the reader nor the
+  // sender has turned them off. Group chats always send them.
+  const chatInfo = await Chat.findById(chatId).select('isGroup').lean();
+  const senderIds = [...new Set(messages.map((m) => m.sender.toString()))];
+  const sendersOff = chatInfo?.isGroup ? new Set() : await getReceiptsOffIds(senderIds);
+  const readerOff = !chatInfo?.isGroup && req.user.showReadReceipts === false;
+  if (!readerOff) {
+    senderIds
+      .filter((id) => !sendersOff.has(id))
+      .forEach((id) => {
+        io.to(id).emit('messages_read', { chatId, readerId });
+      });
+  }
 
   // ✅ EMIT UPDATED UNREAD COUNT TO READER
   const unreadCount = await Message.countDocuments({
@@ -791,9 +510,18 @@ exports.deleteMessage = catchAsync(async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not allowed' });
     }
 
+    // Actually remove the content (not just hide it): text, shared
+    // references and the attachment file in S3.
+    const attachmentKeys = collectMediaKeys(message.attachment?.toObject?.() || message.attachment);
     message.deletedForEveryone = true;
     message.deletedAt = new Date();
+    message.text = '';
+    message.attachment = undefined;
+    message.sharedPost = null;
+    message.sharedReel = null;
+    message.story = null;
     await message.save();
+    await deleteS3Keys(attachmentKeys);
 
     const io = getIO();
     io.to(message.receiver.toString()).emit('message_deleted', {
@@ -806,6 +534,12 @@ exports.deleteMessage = catchAsync(async (req, res) => {
   }
 
   if (mode === 'me') {
+    const isParty =
+      message.sender.toString() === userId ||
+      message.receiver?.toString() === userId;
+    if (!isParty) {
+      return res.status(403).json({ success: false, message: 'Not allowed' });
+    }
     if (!message.deletedFor.includes(userId)) {
       message.deletedFor.push(userId);
       await message.save();
@@ -824,6 +558,10 @@ exports.deleteMessage = catchAsync(async (req, res) => {
 exports.getChatHistory = catchAsync(async (req, res) => {
   const { chatId } = req.params;
   const userId = req.user.id;
+
+  if (!(await isChatParticipant(chatId, userId))) {
+    return res.status(404).json({ success: false, message: 'Chat not found' });
+  }
 
   const messages = await Message.find({
     chat: chatId,
@@ -846,12 +584,18 @@ exports.getChatHistory = catchAsync(async (req, res) => {
       select: 'videoUrl thumbnailUrl caption likesCount viewsCount user',
       populate: { path: 'user', select: 'username profilePicture' },
     })
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const chat = await Chat.findById(chatId).select('participants isGroup').lean();
+  const receiptsOff = await getReceiptsOffIds(
+    (chat?.participants || []).map(String).filter((id) => id !== userId)
+  );
 
   res.status(200).json({
     success: true,
     results: messages.length,
-    data: messages,
+    data: messages.map((m) => redactReadBy(m, req.user, receiptsOff, chat?.isGroup)),
   });
 });
 
@@ -864,7 +608,7 @@ exports.getRecentChats = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
   const chats = await Chat.find({ participants: userId })
-    .populate('participants', 'username profilePicture lastSeen')
+    .populate('participants', 'username profilePicture lastSeen activityStatusVisible')
     .populate({
       path: 'lastMessage',
       populate: [
@@ -903,30 +647,45 @@ exports.getRecentChats = catchAsync(async (req, res) => {
     activeNotes.map((n) => [n.user.toString(), n.text])
   );
 
+  // Unread counts for every chat in ONE aggregation (was one
+  // countDocuments query per chat).
+  const me = new mongoose.Types.ObjectId(userId);
+  const unreadRows = chats.length
+    ? await Message.aggregate([
+        {
+          $match: {
+            chat: { $in: chats.map((c) => c._id) },
+            sender: { $ne: me },
+            'readBy.user': { $ne: me },
+          },
+        },
+        { $group: { _id: '$chat', count: { $sum: 1 } } },
+      ])
+    : [];
+  const unreadByChat = new Map(unreadRows.map((r) => [r._id.toString(), r.count]));
+  const receiptsOff = await getReceiptsOffIds(
+    allParticipantIds.filter((id) => id !== userId)
+  );
+
   const chatsWithStatus = await Promise.all(
     chats.map(async (chat) => {
-      const [participantsWithStatus, unreadCount] = await Promise.all([
-        Promise.all(
-          chat.participants.map(async (user) => {
-            const status = await getUserStatus(user);
-            return {
-              ...user.toObject(),
-              ...status,
-              note: noteByUser.get(user._id.toString()) || null,
-            };
-          })
-        ),
-        Message.countDocuments({
-          chat: chat._id,
-          sender: { $ne: userId },
-          'readBy.user': { $ne: userId },
-        }),
-      ]);
+      const participantsWithStatus = await Promise.all(
+        chat.participants.map(async (user) => {
+          const status = await getUserStatus(user, req.user);
+          return {
+            ...user.toObject(),
+            ...status,
+            note: noteByUser.get(user._id.toString()) || null,
+          };
+        })
+      );
 
+      const chatObj = chat.toObject();
       return {
-        ...chat.toObject(),
+        ...chatObj,
+        lastMessage: redactReadBy(chatObj.lastMessage, req.user, receiptsOff, chatObj.isGroup),
         participants: participantsWithStatus,
-        unreadCount,
+        unreadCount: unreadByChat.get(chat._id.toString()) || 0,
       };
     })
   );

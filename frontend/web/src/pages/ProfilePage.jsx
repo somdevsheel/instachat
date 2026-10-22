@@ -50,6 +50,8 @@ export default function ProfilePage() {
   const [viewingPostId, setViewingPostId] = useState(null);
   const [activeTab, setActiveTab] = useState('Posts');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isRequested, setIsRequested] = useState(false); // private accounts
+  const [reloadKey, setReloadKey] = useState(0);
   const [reels, setReels] = useState([]);
   const [reelsLoading, setReelsLoading] = useState(false);
   const [ownFriends, setOwnFriends] = useState([]);
@@ -71,11 +73,12 @@ export default function ProfilePage() {
       .then((res) => setProfile(res?.data))
       .catch((err) => setError(err?.response?.data?.message || 'Failed to load profile'))
       .finally(() => setLoading(false));
-  }, [username, isOwnProfile, currentUser]);
+  }, [username, isOwnProfile, currentUser, reloadKey]);
 
   useEffect(() => {
     setIsFollowing(!!profile?.isFollowing);
-  }, [profile?.isFollowing]);
+    setIsRequested(!!profile?.isRequested);
+  }, [profile?.isFollowing, profile?.isRequested]);
 
   // "Friends" preview — for your own profile that's people who follow you
   // back; for someone else's profile it's people you both know (mutuals).
@@ -112,9 +115,25 @@ export default function ProfilePage() {
 
   const handleFollowToggle = async () => {
     if (!profile?._id) return;
+
+    // Private account I don't follow: send / cancel a follow request.
+    if (!isFollowing && profile.isPrivate) {
+      setIsRequested((v) => !v);
+      try {
+        const res = await userApi.toggleFollowUser(profile._id);
+        setIsRequested(!!res?.requested);
+      } catch {
+        setIsRequested((v) => !v);
+      }
+      return;
+    }
+
+    const wasFollowing = isFollowing;
     setIsFollowing((v) => !v);
     try {
       await userApi.toggleFollowUser(profile._id);
+      // Unfollowing a private account locks its content again.
+      if (wasFollowing && profile.isPrivate) setReloadKey((k) => k + 1);
     } catch {
       setIsFollowing((v) => !v);
     }
@@ -168,10 +187,10 @@ export default function ProfilePage() {
                 ) : (
                   <>
                     <button
-                      className={`follow-button ${isFollowing ? 'following' : ''}`}
+                      className={`follow-button ${isFollowing || isRequested ? 'following' : ''}`}
                       onClick={handleFollowToggle}
                     >
-                      {isFollowing ? 'Following' : 'Follow'}
+                      {isFollowing ? 'Following' : isRequested ? 'Requested' : 'Follow'}
                     </button>
                     <button className="follow-button secondary" onClick={handleMessage}>
                       Message
@@ -191,6 +210,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 className="profile-stat profile-stat-btn"
+                disabled={profile.isLocked}
                 onClick={() => setFollowListType('followers')}
               >
                 <strong>{formatCount(profile.followersCount ?? 0)}</strong>
@@ -199,6 +219,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 className="profile-stat profile-stat-btn"
+                disabled={profile.isLocked}
                 onClick={() => setFollowListType('following')}
               >
                 <strong>{formatCount(profile.followingCount ?? 0)}</strong>
@@ -208,6 +229,13 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {profile.isLocked ? (
+          <div className="centered-message">
+            <strong>🔒 This account is private</strong>
+            <div>Follow this account to see their photos and videos.</div>
+          </div>
+        ) : (
+        <>
         <div className="profile-tabs">
           {TABS.map((tab) => (
             <button
@@ -322,6 +350,8 @@ export default function ProfilePage() {
               <div className="centered-message">Nothing to show here yet.</div>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
 

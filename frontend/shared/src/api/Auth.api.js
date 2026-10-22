@@ -181,6 +181,7 @@ export const verifyRegisterOtp = async ({
   password,
   username,
   fullName,
+  acceptedTerms,
 }) => {
   const res = await api.post('/auth/register/verify-otp', {
     email,
@@ -188,6 +189,7 @@ export const verifyRegisterOtp = async ({
     password,
     username,
     fullName,
+    acceptedTerms,
   });
   return res.data;
 };

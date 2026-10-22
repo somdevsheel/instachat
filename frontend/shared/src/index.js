@@ -56,7 +56,7 @@ export {
   clearNotifications,
 } from './redux/slices/notificationSlice';
 
-export { default as api, configureApiBaseUrl } from './services/api';
+export { default as api, configureApiBaseUrl, onSessionInvalid } from './services/api';
 export {
   initSocket,
   joinChatRoom,

@@ -23,7 +23,7 @@ import colors from '../../theme/colors';
 const RESEND_TIME = 30;
 
 const SignupOtpScreen = ({ route, navigation }) => {
-  const { email, fullName, username } = route.params;
+  const { email, fullName, username, acceptedTerms } = route.params;
 
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
@@ -63,6 +63,7 @@ const SignupOtpScreen = ({ route, navigation }) => {
         password,
         username,
         fullName,
+        acceptedTerms,
       });
 
       Alert.alert(

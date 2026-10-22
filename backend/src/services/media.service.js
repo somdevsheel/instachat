@@ -5,6 +5,7 @@ const {
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 const s3Client = require('../config/aws');
+const logger = require('../utils/logger');
 
 /* ======================================================
    ENV VALIDATION
@@ -123,8 +124,8 @@ exports.deleteFile = async fileKey => {
     });
 
     await s3Client.send(command);
-    console.log(`🗑️ S3 deleted: ${fileKey}`);
+    logger.debug(`🗑️ S3 deleted: ${fileKey}`);
   } catch (err) {
-    console.error('❌ S3 delete failed:', err.message);
+    logger.error('❌ S3 delete failed:', err.message);
   }
 };

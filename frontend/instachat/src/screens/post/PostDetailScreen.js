@@ -54,7 +54,13 @@ const PostDetailScreen = ({ route, navigation }) => {
       }
     } catch (err) {
       console.error('Error fetching post:', err);
-      setError('Failed to load post');
+      setError(
+        (err?.response?.data?.code === 'PRIVATE_ACCOUNT'
+          ? 'This account is private. Follow them to see their posts.'
+          : err?.response?.status === 404
+            ? 'This post is no longer available.'
+            : 'Failed to load post')
+      );
     } finally {
       setLoading(false);
     }

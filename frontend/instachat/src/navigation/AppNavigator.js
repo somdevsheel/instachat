@@ -23,6 +23,7 @@ import FollowListScreen from '../screens/profile/FollowListScreen';
 import FollowersListScreen from '../screens/profile/FollowersListScreen';
 import FollowingListScreen from '../screens/profile/FollowingListScreen';
 import ManageCloseFriendsScreen from '../screens/profile/ManageCloseFriendsScreen';
+import FollowRequestsScreen from '../screens/profile/FollowRequestsScreen';
 
 /* =========================
    CONTENT CREATION
@@ -190,6 +191,10 @@ export default function AppNavigator() {
             <Stack.Screen
               name={ROUTES.MANAGE_CLOSE_FRIENDS}
               component={ManageCloseFriendsScreen}
+            />
+            <Stack.Screen
+              name={ROUTES.FOLLOW_REQUESTS}
+              component={FollowRequestsScreen}
             />
           </>
         ) : (

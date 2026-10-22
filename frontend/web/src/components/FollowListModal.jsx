@@ -27,7 +27,15 @@ export default function FollowListModal({ userId, type, title, onClose }) {
       prev.map((u) => (u._id === targetId ? { ...u, isFollowing: !u.isFollowing } : u))
     );
     try {
-      await userApi.toggleFollowUser(targetId);
+      const res = await userApi.toggleFollowUser(targetId);
+      // Private accounts get a follow *request*; trust the server's answer.
+      setUsers((prev) =>
+        prev.map((u) =>
+          u._id === targetId
+            ? { ...u, isFollowing: !!res?.following, isRequested: !!res?.requested }
+            : u
+        )
+      );
     } catch {
       setUsers((prev) =>
         prev.map((u) => (u._id === targetId ? { ...u, isFollowing: !u.isFollowing } : u))
@@ -72,10 +80,10 @@ export default function FollowListModal({ userId, type, title, onClose }) {
 
                 {u._id !== currentUserId && (
                   <button
-                    className={`follow-list-btn ${u.isFollowing ? 'following' : ''}`}
+                    className={`follow-list-btn ${u.isFollowing || u.isRequested ? 'following' : ''}`}
                     onClick={() => handleFollowToggle(u._id)}
                   >
-                    {u.isFollowing ? 'Following' : 'Follow'}
+                    {u.isFollowing ? 'Following' : u.isRequested ? 'Requested' : 'Follow'}
                   </button>
                 )}
               </div>

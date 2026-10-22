@@ -14,7 +14,15 @@ export default function PostDetailModal({ postId, onClose }) {
     postsApi
       .getPostById(postId)
       .then((res) => setPost(res?.data || null))
-      .catch(() => setError('Failed to load post'))
+      .catch((err) =>
+        setError(
+          err?.response?.data?.code === 'PRIVATE_ACCOUNT'
+            ? 'This account is private. Follow them to see their posts.'
+            : err?.response?.status === 404
+              ? 'This post is no longer available.'
+              : 'Failed to load post'
+        )
+      )
       .finally(() => setLoading(false));
   }, [postId]);
 

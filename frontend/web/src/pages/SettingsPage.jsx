@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { userApi, logout } from '@instachat/shared';
+import { userApi, logout, api } from '@instachat/shared';
 
 const TABS = ['Account', 'Privacy', 'Security'];
 
@@ -30,6 +30,10 @@ function AccountTab() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // Email changes need a code sent to the new address.
+  const [savedEmail, setSavedEmail] = useState('');
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailOtp, setEmailOtp] = useState('');
 
   useEffect(() => {
     userApi
@@ -44,6 +48,7 @@ function AccountTab() {
           gender: data.gender || '',
           dateOfBirth: formatDateInput(data.dateOfBirth),
         });
+        setSavedEmail(data.email || '');
       })
       .catch(() => setError('Failed to load account info'))
       .finally(() => setLoading(false));
@@ -51,7 +56,14 @@ function AccountTab() {
 
   const handleChange = (field) => (e) => {
     setForm((f) => ({ ...f, [field]: e.target.value }));
+    if (field === 'email') {
+      setEmailCodeSent(false);
+      setEmailOtp('');
+    }
   };
+
+  const emailChanged =
+    form.email.trim().toLowerCase() !== savedEmail.toLowerCase();
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -59,7 +71,20 @@ function AccountTab() {
     setError('');
     setMessage('');
     try {
-      await userApi.updateAccountInfo(form);
+      if (emailChanged && !emailCodeSent) {
+        await userApi.requestEmailChangeOtp(form.email.trim());
+        setEmailCodeSent(true);
+        setMessage(`We sent a verification code to ${form.email.trim()}`);
+        return;
+      }
+
+      const payload = emailChanged
+        ? { ...form, email: form.email.trim(), emailOtp: emailOtp.trim() }
+        : { ...form, email: savedEmail };
+      await userApi.updateAccountInfo(payload);
+      setSavedEmail(payload.email);
+      setEmailCodeSent(false);
+      setEmailOtp('');
       setMessage('Account info updated');
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to update account info');
@@ -80,6 +105,20 @@ function AccountTab() {
 
       <label className="form-label">Email</label>
       <input className="form-input" type="email" value={form.email} onChange={handleChange('email')} />
+
+      {emailChanged && emailCodeSent && (
+        <>
+          <label className="form-label">Verification code</label>
+          <input
+            className="form-input"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder={`Code sent to ${form.email.trim()}`}
+            value={emailOtp}
+            onChange={(e) => setEmailOtp(e.target.value)}
+          />
+        </>
+      )}
 
       <label className="form-label">Phone</label>
       <input className="form-input" value={form.phone} onChange={handleChange('phone')} />
@@ -105,7 +144,11 @@ function AccountTab() {
       {message && <div className="settings-success">{message}</div>}
 
       <button type="submit" className="follow-button settings-save-btn" disabled={saving}>
-        {saving ? 'Saving…' : 'Save changes'}
+        {saving
+          ? 'Saving…'
+          : emailChanged && !emailCodeSent
+            ? 'Send verification code'
+            : 'Save changes'}
       </button>
     </form>
   );
@@ -154,14 +197,14 @@ function PrivacyTab() {
       />
       <ToggleRow
         label="Show activity status"
-        description="Let others see when you're online"
+        description="Let others see when you're online or were last active. If you turn this off, you won't see theirs either."
         value={settings.activityStatusVisible}
         onToggle={() => toggle('activityStatusVisible')}
         disabled={saving}
       />
       <ToggleRow
         label="Show read receipts"
-        description="Let people know when you've seen their messages"
+        description="Let people know when you've seen their messages. If you turn this off, you won't see theirs either. Group chats always show read receipts."
         value={settings.showReadReceipts}
         onToggle={() => toggle('showReadReceipts')}
         disabled={saving}
@@ -209,6 +252,40 @@ function SecurityTab() {
 
   const [loginActivity, setLoginActivity] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
+
+  const [exporting, setExporting] = useState(false);
+  const [dataError, setDataError] = useState('');
+
+  // "Download your data": save the export as a JSON file.
+  const handleExport = async () => {
+    setExporting(true);
+    setDataError('');
+    try {
+      const res = await userApi.exportMyData();
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `instachat-data-${res.data?.profile?.username || 'me'}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDataError(err?.response?.data?.message || 'Could not download your data');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleLogoutAll = async () => {
+    if (!window.confirm("Log out of all devices? You'll be logged out here too.")) return;
+    try {
+      await api.post('/auth/logout-all');
+      dispatch(logout());
+      navigate('/login', { replace: true });
+    } catch {
+      setDataError('Could not log out of all devices. Try again.');
+    }
+  };
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -357,6 +434,22 @@ function SecurityTab() {
           ))}
         </ul>
       )}
+
+      <h3 className="settings-section-title">Your information</h3>
+      <p className="post-time">
+        Download a copy of everything InstaChat stores about you, as a JSON file.
+      </p>
+      <button type="button" className="follow-button" onClick={handleExport} disabled={exporting}>
+        {exporting ? 'Preparing…' : 'Download your data'}
+      </button>
+      <button type="button" className="follow-button secondary" onClick={handleLogoutAll}>
+        Log out of all devices
+      </button>
+      {dataError && <div className="auth-error">{dataError}</div>}
+      <p className="post-time">
+        <Link to="/privacy" target="_blank">Privacy Policy</Link> ·{' '}
+        <Link to="/terms" target="_blank">Terms of Use</Link>
+      </p>
 
       <h3 className="settings-section-title danger">Danger zone</h3>
       {!showDeleteConfirm ? (

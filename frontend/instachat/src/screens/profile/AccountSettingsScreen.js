@@ -106,7 +106,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector, useDispatch } from 'react-redux';
 import { loadUser, logout } from '../../redux/slices/authSlice';
-import { getAccountInfo, updateAccountInfo, deleteAccount } from '../../api/User.api';
+import {
+  getAccountInfo,
+  updateAccountInfo,
+  requestEmailChangeOtp,
+  deleteAccount,
+} from '../../api/User.api';
 
 /* =========================
    CONSTANTS
@@ -289,7 +294,8 @@ const AccountSettingsScreen = ({ navigation }) => {
   const [saving, setSaving] = useState(false);
 
   // Modal states
-  const [editField, setEditField] = useState(null); // 'username' | 'email' | 'phone' | 'name'
+  const [editField, setEditField] = useState(null); // 'username' | 'email' | 'emailCode' | 'phone' | 'name'
+  const [pendingEmail, setPendingEmail] = useState(''); // new email awaiting code
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -333,6 +339,33 @@ const AccountSettingsScreen = ({ navigation }) => {
   const handleSaveField = async (field, value) => {
     try {
       setSaving(true);
+
+      // Email changes are two-step: send a code to the new address,
+      // then confirm it.
+      if (
+        field === 'email' &&
+        value.trim().toLowerCase() !== (accountData.email || '').toLowerCase()
+      ) {
+        await requestEmailChangeOtp(value.trim());
+        setPendingEmail(value.trim().toLowerCase());
+        setEditField('emailCode');
+        return;
+      }
+
+      if (field === 'emailCode') {
+        const res = await updateAccountInfo({
+          email: pendingEmail,
+          emailOtp: value.trim(),
+        });
+        if (res.success) {
+          setAccountData((prev) => ({ ...prev, email: pendingEmail }));
+          setPendingEmail('');
+          setEditField(null);
+          dispatch(loadUser());
+        }
+        return;
+      }
+
       const res = await updateAccountInfo({ [field]: value });
 
       if (res.success) {
@@ -408,6 +441,14 @@ const AccountSettingsScreen = ({ navigation }) => {
           placeholder: 'Enter email address',
           keyboardType: 'email-address',
           maxLength: 100,
+        };
+      case 'emailCode':
+        return {
+          title: 'Verification code',
+          value: '',
+          placeholder: `Code sent to ${pendingEmail}`,
+          keyboardType: 'number-pad',
+          maxLength: 6,
         };
       case 'phone':
         return {

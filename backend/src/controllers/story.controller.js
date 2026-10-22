@@ -1,6 +1,11 @@
 const Story = require('../models/Story');
 const User = require('../models/user.model');
 const catchAsync = require('../utils/catchAsync');
+const { verifyUploadedMedia } = require('../utils/verifyUpload');
+const graph = require('../services/graph.service');
+const access = require('../services/access.service');
+const contentDeletion = require('../services/contentDeletion.service');
+const logger = require('../utils/logger');
 
 const CDN_BASE_URL =
   process.env.CDN_BASE_URL ||
@@ -14,7 +19,7 @@ exports.createStory = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const { key, mediaType } = req.body;
 
-  console.log('📸 Creating story:', { userId, key, mediaType });
+  logger.debug('📸 Creating story:', { userId, key, mediaType });
 
   if (!key || !mediaType) {
     return res.status(400).json({
@@ -30,6 +35,8 @@ exports.createStory = catchAsync(async (req, res) => {
     });
   }
 
+  await verifyUploadedMedia(key, userId, mediaType);
+
   const mediaUrl = `${CDN_BASE_URL}/${key}`;
 
   const story = await Story.create({
@@ -43,7 +50,7 @@ exports.createStory = catchAsync(async (req, res) => {
 
   await story.populate('user', 'username profilePicture');
 
-  console.log('✅ Story created:', story._id);
+  logger.debug('✅ Story created:', story._id);
 
   res.status(201).json({
     success: true,
@@ -58,10 +65,15 @@ exports.createStory = catchAsync(async (req, res) => {
 exports.getStoryFeed = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
-  const currentUser = await User.findById(userId).select('following');
+  const [followingIds, mutedIds] = await Promise.all([
+    graph.getFollowingIds(userId),
+    graph.getMutedIds(userId),
+  ]);
+  const muted = new Set(mutedIds);
 
   const stories = await Story.find({
-    user: { $in: [...currentUser.following, userId] },
+    // Muted people's stories don't appear in the tray.
+    user: { $in: [...followingIds.filter((id) => !muted.has(id)), userId] },
   })
     .populate('user', 'username profilePicture')
     .sort({ createdAt: -1 });
@@ -124,7 +136,8 @@ exports.deleteStory = catchAsync(async (req, res) => {
     });
   }
 
-  await story.deleteOne();
+  // Removes the media from S3 too, not just the DB record.
+  await contentDeletion.deleteStory(story._id);
 
   res.status(200).json({
     success: true,
@@ -147,10 +160,12 @@ exports.markStoriesSeen = catchAsync(async (req, res) => {
     });
   }
 
+  const hidden = await access.getHiddenAuthorIds(userId);
   await Story.updateMany(
     {
       _id: { $in: storyIds },
-      user: { $ne: userId }, // Don't mark own stories as seen
+      // Don't mark own stories, or ones I'm not allowed to see
+      user: { $ne: userId, $nin: hidden },
     },
     { $addToSet: { seenBy: userId } }
   );
@@ -240,11 +255,10 @@ exports.getStoryViewers = async (req, res) => {
       data: viewersWithReactions,
     });
   } catch (error) {
-    console.error('Error getting story viewers:', error);
+    logger.error('Error getting story viewers:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
-      error: error.message,
     });
   }
 };
@@ -258,10 +272,19 @@ exports.reactToStory = async (req, res) => {
     const userId = req.user.id;
     const { reaction } = req.body; // reaction = emoji
 
-    if (!reaction || typeof reaction !== 'string') {
+    if (!reaction || typeof reaction !== 'string' || reaction.length > 16) {
       return res.status(400).json({
         success: false,
         message: 'Reaction emoji is required',
+      });
+    }
+
+    try {
+      await access.loadViewable(Story, req.params.id, userId);
+    } catch (err) {
+      return res.status(err.statusCode === 403 ? 403 : 404).json({
+        success: false,
+        message: err.statusCode === 403 ? err.message : 'Story not found',
       });
     }
 
@@ -298,11 +321,10 @@ exports.reactToStory = async (req, res) => {
       message: 'Reaction added',
     });
   } catch (error) {
-    console.error('Error reacting to story:', error);
+    logger.error('Error reacting to story:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
-      error: error.message,
     });
   }
 };
@@ -325,16 +347,23 @@ exports.getStoryReactions = async (req, res) => {
       });
     }
 
+    // Like viewers, who reacted is only visible to the story's owner.
+    if (story.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: story.reactions || [],
     });
   } catch (error) {
-    console.error('Error getting story reactions:', error);
+    logger.error('Error getting story reactions:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
-      error: error.message,
     });
   }
 };

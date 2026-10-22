@@ -1,4 +1,5 @@
 const redis = require('../config/redis');
+const logger = require('../utils/logger');
 
 const WINDOW_SECONDS = 60 * 15; // 15 minutes
 const MAX_ATTEMPTS = 5;
@@ -7,7 +8,7 @@ module.exports = async function passwordRateLimiter(req, res, next) {
   try {
     if (!redis || !redis.status || redis.status !== 'ready') {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('⚠️ Password rate limiter skipped (dev)');
+        logger.warn('⚠️ Password rate limiter skipped (dev)');
         }
       return next(); // ✅ CRITICAL FIX
     }
@@ -32,7 +33,7 @@ module.exports = async function passwordRateLimiter(req, res, next) {
 
     next();
   } catch (err) {
-    console.warn(
+    logger.warn(
       '⚠️ Password rate limiter error, allowing request:',
       err.message
     );

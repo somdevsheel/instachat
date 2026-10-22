@@ -85,10 +85,10 @@ Create an IAM user (or better, an instance role attached to the Lightsail instan
 
 ### imageProcessor (sharp)
 - `sharp` ships native binaries — building it on your local machine (especially Apple Silicon or Windows) and zipping it up will **not** run on Lambda's Amazon Linux runtime. Either:
-  - build in a matching container: `docker run --rm -v "$PWD":/var/task public.ecr.aws/sam/build-nodejs20.x npm install --arch=x64 --platform=linux --libc=glibc sharp`, or
+  - build in a matching container: `docker run --rm -v "$PWD":/var/task public.ecr.aws/sam/build-nodejs24.x npm install --arch=x64 --platform=linux --libc=glibc sharp`, or
   - use a prebuilt Lambda Layer for `sharp` (several public ones exist), or
   - package as a **container image** Lambda instead of a zip (simplest to get right).
-- Runtime: Node.js 20.x, memory ≥512MB (image resizing is CPU-bound — more memory also means more vCPU on Lambda), timeout ~30s.
+- Runtime: Node.js 24.x (Node 20 is end-of-life since April 2026 — no security fixes), memory ≥512MB (image resizing is CPU-bound — more memory also means more vCPU on Lambda), timeout ~30s.
 
 ### videoProcessor (fluent-ffmpeg)
 - Needs an `ffmpeg` binary on `PATH` — Lambda doesn't include one. Attach a public `ffmpeg` Lambda Layer (e.g. the widely-used `ffmpeg-lambda-layer`), or again use a container image with ffmpeg installed.
@@ -112,22 +112,24 @@ Attach a static IP (Lightsail → Networking → Create static IP) so it survive
 
 ### 4.2 One-time server setup
 
-SSH in (`ssh ubuntu@<static-ip>`) and run this end-to-end — system packages, Node 20 LTS, Redis, Nginx, Certbot, PM2:
+SSH in (`ssh ubuntu@<static-ip>`) and run this end-to-end — system packages, Node 24 LTS, Redis, Nginx, Certbot, PM2:
 
 ```bash
 # System update
 sudo apt update && sudo apt upgrade -y
 
-# Node.js 20 LTS via NodeSource (apt-based, not nvm — plays cleanly with
-# systemd/pm2 startup, which nvm's per-user PATH setup often fights with)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# Node.js 24 LTS via NodeSource (apt-based, not nvm — plays cleanly with
+# systemd/pm2 startup, which nvm's per-user PATH setup often fights with).
+# Node 20 reached end-of-life in April 2026; the backend needs >= 20.19.
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs git build-essential
 
-node -v   # sanity check: v20.x
+node -v   # sanity check: v24.x
 npm -v
 
-# Redis (self-hosted on this same instance, matches redis.js's
-# 127.0.0.1 default in its PRODUCTION block)
+# Redis (self-hosted on this same instance; redis.js defaults to
+# 127.0.0.1:6379). In production it backs rate limits, logout/session
+# revocation and the Socket.IO cross-process adapter.
 sudo apt install -y redis-server
 sudo sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
 sudo systemctl enable --now redis-server
@@ -161,8 +163,13 @@ Create `backend/.env` (`nano .env`) with production values. Required — matches
 PORT=5000
 NODE_ENV=production
 MONGO_URI=<Atlas connection string>
-JWT_SECRET=<long random value>
-JWT_EXPIRES_IN=7d
+POSTGRES_URL=postgres://<user>:<password>@<host>:5432/instachat
+POSTGRES_SSL=true
+ALLOWED_ORIGINS=https://app.yourdomain.com,https://admin.yourdomain.com
+JWT_SECRET=<long random value, min 32 chars: openssl rand -hex 48>
+# Login session length. The code now honors this value (it used to be
+# ignored and tokens always lasted 30d) — keep 30d to avoid weekly logouts.
+JWT_EXPIRES_IN=30d
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 AWS_ACCESS_KEY_ID=<from S3 IAM step>
@@ -183,14 +190,42 @@ chmod 600 .env
 
 **MongoDB**: use Atlas rather than self-hosting on the same small instance — Lightsail's smaller tiers don't have the memory/IOPS headroom to run Mongo, Redis, and Node reliably together. Whitelist this instance's static IP in Atlas's network access list.
 
-**Redis config**: open `backend/src/config/redis.js` and confirm the production block (currently commented) is the active one before deploying — it's manually toggled by commenting/uncommenting, not env-driven.
+**Redis config**: env-driven (`REDIS_URL`, or `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`); no file editing needed.
 
-Start it under PM2:
+**PostgreSQL** (social graph: follows, blocks, mutes, close friends — everything else stays in MongoDB): use a managed instance (Lightsail managed database, RDS, Neon, Supabase), PostgreSQL 14+. Allow this instance's static IP, create a database (e.g. `instachat`), and set `POSTGRES_URL` / `POSTGRES_SSL` above. The server refuses to start if the schema is behind.
+
+First-time rollout of the PostgreSQL split (existing data lives in MongoDB arrays):
 
 ```bash
-pm2 start server.js --name instachat-api
+npm run db:migrate                                   # create tables (re-run on every deploy; no-op if current)
+node db/scripts/migrateGraphToPostgres.js --dry-run  # preview counts
+npm run db:copy-graph                                # copy follows/blocks/mutes/close friends
+pm2 restart instachat-api                            # (or start, below)
+npm run db:copy-graph                                # run again right after: catches anything written by
+                                                     # the old version during the switchover (idempotent)
+```
+
+Check `curl https://api.yourdomain.com/api/v1/health/ready` returns `"mongo":"ok","postgres":"ok"`. The old MongoDB arrays are left in place (read-only) as a backup.
+
+On later deploys just run `npm run db:migrate` before restarting.
+
+Start it under PM2 in **cluster mode** (one process per CPU core):
+
+```bash
+pm2 start server.js --name instachat-api -i max
 pm2 save
 pm2 startup systemd   # prints a sudo command — copy/paste and run it, then re-run: pm2 save
+```
+
+Running several processes (or several instances behind a load balancer) is supported because, in production, rate-limit counters, revoked sessions and Socket.IO events go through Redis (`RATE_LIMIT_STORE` / `SOCKET_ADAPTER` default to `redis` when `NODE_ENV=production`). Clients connect with WebSocket only, so no sticky sessions are needed.
+
+> **Rollout order:** app builds released before this change connect with long-polling first, and that breaks when requests are spread over several processes. Until most users have the WebSocket-only app update, run a **single** process (`pm2 start server.js --name instachat-api`, without `-i max`), then switch to cluster mode. `npm test` includes a two-process test that proves both. If several environments share one Redis, give each its own `SOCKET_ADAPTER_KEY` and Redis database number.
+
+Optional production settings for `backend/.env`:
+
+```
+SENTRY_DSN=<from sentry.io>      # error reporting; off when unset
+LOG_LEVEL=info                   # logs are JSON lines in production
 ```
 
 ### 4.4 Nginx reverse proxy + TLS
@@ -252,15 +287,60 @@ Simplest option: serve `dist/` from the same Nginx on the Lightsail instance und
 
 ---
 
+### Security headers for the web app and admin panel
+
+Both production builds include a Content-Security-Policy `<meta>` tag, generated at build time by the two `vite.config` files. It allows:
+
+- scripts only from the app's own origin: no inline scripts, no `eval`, and Trusted Types enforced, which blocks HTML injected through `innerHTML`-style DOM APIs
+- network calls only to the API, its WebSocket and **your** S3 bucket
+- images and video only from your CDN and bucket
+
+This was checked in Chrome on every main page of both apps against a real backend: no violations, and injected scripts and HTML were blocked.
+
+The policy is built from env variables, and `vite build` **fails** if a required one is missing:
+
+| App | Required | Optional |
+|---|---|---|
+| web (`frontend/web`) | `VITE_API_URL`, `VITE_CDN_URL`, `VITE_S3_BUCKET_URL` | `VITE_SOCKET_URL` (defaults to the API origin) |
+| admin (`admin-panel`) | `VITE_CDN_URL` | `VITE_S3_BUCKET_URL` (legacy media URLs) |
+
+If you change a domain, rebuild. A clickjacking guard can't be set from a `<meta>` tag, so add these lines inside each static site's nginx `server { }` block:
+
+```nginx
+add_header Content-Security-Policy "frame-ancestors 'none'" always;
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```
+
+**Optional: get alerted to blocked attacks.** A `<meta>` policy can't report violations. To have browsers report them to Sentry:
+1. Copy the policy from the built `dist/index.html` (the `content="..."` of the CSP `<meta>` tag).
+2. Send it as a report-only header with your Sentry CSP report URL appended (Sentry → Project Settings → Security Headers):
+
+```nginx
+add_header Content-Security-Policy-Report-Only "<the exact policy from dist/index.html>; report-uri https://o0.ingest.sentry.io/api/<project>/security/?sentry_key=<key>" always;
+```
+
+It has to be the same policy, or Sentry fills with false alarms. Report-only never blocks anything itself; the `<meta>` tag does the enforcing.
+
 ## 6. Mobile app
 
-Before building for release, point the two hardcoded URLs at production (they currently default to a LAN dev IP after our last local-dev fix):
-- `frontend/instachat/src/services/api.js` → `API_URL`
-- `frontend/instachat/src/services/socket.js` → `SOCKET_URL`
+The API and socket URLs come from `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_SOCKET_URL` (see `frontend/instachat/.env.example`) and default to `https://api.grownoww.com`. For local development put your LAN IP in `frontend/instachat/.env` (gitignored). Then build with EAS as usual.
 
-Both should be `https://api.yourdomain.com` (with `/api/v1` appended for `API_URL`). Then build with EAS as usual. If you want to stop hand-editing these per environment, say so — worth wiring to `app.config.js` + `extra` fields instead of hardcoded strings, but that's a separate change from this deployment pass.
+Ship the app update together with this backend release: private accounts, follow requests, email-change verification and server-side logout all need the new screens.
 
 ---
+
+## Terms and Privacy Policy
+
+The web app serves public pages at `/terms` and `/privacy`, linked from sign-up (web and mobile) and from Settings. They describe what the app actually does. Before launch:
+
+1. Fill in `frontend/web/src/pages/legal/legalConfig.js`: company name, address, contact emails, governing law, hosting region and log/backup retention. Until you do, both pages show a "Draft" banner.
+2. Have a lawyer review the text for the countries you operate in.
+3. Give `https://<your web domain>/privacy` to the App Store and Play Store as the privacy policy URL, and fill in their data-safety forms to match it.
+4. Set `EXPO_PUBLIC_WEB_URL` for the mobile build so its links point at these pages.
+5. When the terms change materially, bump `version` in `legalConfig.js` **and** `TERMS_VERSION` in `backend/src/controllers/auth.controller.js`. Each user's acceptance is stored with the version they agreed to.
 
 ## Security checklist before going live
 
@@ -268,13 +348,40 @@ Both should be `https://api.yourdomain.com` (with `/api/v1` appended for `API_UR
 - [ ] `.env` is not committed (confirm `backend/.gitignore` covers it) and file permissions are `600` on the instance
 - [ ] Lightsail firewall only allows 22/80/443 inbound; Redis/Mongo (if ever local) not exposed externally
 - [ ] S3 bucket keeps Block Public Access on; only CloudFront (via OAC) and the presigned-URL flow touch it
-- [ ] CORS on the Express app (`app.js`, currently `origin: '*'`) — consider narrowing to your actual app/admin origins once mobile/admin domains are final
-- [ ] `NODE_ENV=production` set, so `morgan('dev')` request logging is off and any dev-only branches are disabled
+- [ ] `ALLOWED_ORIGINS` lists exactly your web + admin origins (CORS fails closed in production without it)
+- [ ] `NODE_ENV=production` set (JSON logs, debug logs off, Redis-backed limits/sockets, internal error details hidden)
+- [ ] `SENTRY_DSN` set and a test error shows up in Sentry
+- [ ] Backups scheduled AND one restore drill done (section 7)
+- [ ] Load test run against staging (section 8)
 - [ ] SSH access via key only, password auth disabled on the Lightsail instance
+
+## 7. Monitoring and backups
+
+**Health checks.** Point an uptime monitor (UptimeRobot, Better Stack, CloudWatch Synthetics) at `https://api.yourdomain.com/api/v1/health/ready`. It returns 503 if MongoDB or PostgreSQL is unreachable. `/api/v1/health` is a plain liveness check.
+
+**Logs.** In production every line is JSON with `requestId`, `method`, `path`, `status`, `durationMs`, `userId`. Every response carries an `X-Request-Id` header, and error responses include `requestId`, so a user's bug report can be matched to its log lines and its Sentry event. Ship PM2's logs to your aggregator (e.g. the CloudWatch agent, or `pm2 install pm2-logrotate` at minimum).
+
+**Backups.** First turn on your providers' own backups: MongoDB Atlas continuous backup, and automated backups / point-in-time recovery on managed PostgreSQL. Then add an off-site copy of both databases with `backend/ops/backup.sh`, which needs `mongodb-database-tools`, `postgresql-client` and the AWS CLI:
+
+```bash
+# backend/.env:  BACKUP_S3_URI=s3://instachat-backups/prod   (separate bucket: versioning on, public access blocked, lifecycle expiry e.g. 30 days)
+15 3 * * * cd /home/ubuntu/instachat/backend && ./ops/backup.sh >> /home/ubuntu/backup.log 2>&1
+```
+
+**Restore drill (do this before launch).** Restore the latest backup into scratch databases and check the counts:
+
+```bash
+./ops/restore.sh s3://instachat-backups/prod/<timestamp> "<scratch mongo uri>" "<scratch postgres url>"
+```
+
+## 8. Load testing
+
+Before launch, run `backend/ops/loadtest.k6.js` with [k6](https://k6.io) against a staging copy that has production-sized data (instructions are at the top of the file). It fails if p95 latency is over 500 ms or more than 1% of requests error. Keep the instance's CPU, memory and database metrics open during the run, since they show which part saturates first.
 
 ## Rollback
 
-Since deploy is just `git pull` + `pm2 restart`, keep it reversible:
+Since deploy is just `git pull` + `pm2 restart`, keep it reversible. Database migrations only ever add tables, so older code keeps working against a newer schema. Rolling back past the PostgreSQL split is the exception: follows made since then exist only in PostgreSQL.
+
 ```bash
 git log --oneline -5   # find the last good commit
 git checkout <commit>

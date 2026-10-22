@@ -279,6 +279,31 @@ export const updateAccountInfo = async (data) => {
   return res.data;
 };
 
+// Full copy of my data ("Download your data").
+export const exportMyData = async () => {
+  const res = await api.get('/users/me/export', { timeout: 60000 });
+  return res.data;
+};
+
+// Pending follow requests to my (private) account.
+export const getFollowRequests = async () => {
+  const res = await api.get('/users/follow-requests');
+  return res.data;
+};
+
+// action: 'accept' | 'decline'
+export const respondToFollowRequest = async (userId, action) => {
+  const res = await api.post(`/users/follow-requests/${userId}/${action}`);
+  return res.data;
+};
+
+// Step 1 of an email change: sends a code to the NEW address. Step 2 is
+// updateAccountInfo({ email, emailOtp }).
+export const requestEmailChangeOtp = async (email) => {
+  const res = await api.post('/users/account-info/email/request-otp', { email });
+  return res.data;
+};
+
 export const deleteAccount = async (password) => {
   const res = await api.delete('/users/delete-account', {
     data: { password },

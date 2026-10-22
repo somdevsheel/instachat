@@ -1,4 +1,5 @@
 const { S3Client } = require('@aws-sdk/client-s3');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
 /* ============================
@@ -13,7 +14,7 @@ const requiredEnvVars = [
 
 for (const key of requiredEnvVars) {
   if (!process.env[key]) {
-    console.error(`❌ Missing env variable: ${key}`);
+    logger.error(`❌ Missing env variable: ${key}`);
     process.exit(1);
   }
 }

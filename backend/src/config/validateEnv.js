@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 /**
  * ======================================================
  * ENV VAR VALIDATION
@@ -7,7 +8,7 @@
  * doesn't fail until the first request that needs it — a confusing
  * runtime error instead of an obvious startup failure.
  */
-const REQUIRED = ['MONGO_URI', 'JWT_SECRET'];
+const REQUIRED = ['MONGO_URI', 'POSTGRES_URL', 'JWT_SECRET'];
 
 // Needed for real feature coverage (media uploads, CDN URLs) but the
 // server can still boot and serve non-media routes without them — so
@@ -23,16 +24,26 @@ const validateEnv = () => {
   const missingRequired = REQUIRED.filter((key) => !process.env[key]);
 
   if (missingRequired.length > 0) {
-    console.error(
+    logger.error(
       `💥 Missing required environment variable(s): ${missingRequired.join(', ')}`
     );
-    console.error('   Check backend/.env — the server cannot start without these.');
+    logger.error('   Check backend/.env — the server cannot start without these.');
+    process.exit(1);
+  }
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.JWT_SECRET.length < 32
+  ) {
+    logger.error(
+      '💥 JWT_SECRET is too short for production (min 32 chars). Generate one with: openssl rand -hex 48'
+    );
     process.exit(1);
   }
 
   const missingRecommended = RECOMMENDED.filter((key) => !process.env[key]);
   if (missingRecommended.length > 0) {
-    console.warn(
+    logger.warn(
       `⚠️  Missing environment variable(s): ${missingRecommended.join(', ')} — media uploads will fail until these are set.`
     );
   }
@@ -41,7 +52,7 @@ const validateEnv = () => {
     process.env.NODE_ENV === 'production' &&
     !process.env.ALLOWED_ORIGINS
   ) {
-    console.warn(
+    logger.warn(
       '⚠️  ALLOWED_ORIGINS is not set in production — CORS will reject every browser request. See backend/.env.'
     );
   }

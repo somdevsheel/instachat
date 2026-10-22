@@ -23,7 +23,15 @@ export default function RightPanel() {
       prev.map((u) => (u._id === userId ? { ...u, isFollowing: true } : u))
     );
     try {
-      await userApi.followUser(userId);
+      const res = await userApi.followUser(userId);
+      // Private accounts get a follow *request*; trust the server's answer.
+      setSuggestions((prev) =>
+        prev.map((u) =>
+          u._id === userId
+            ? { ...u, isFollowing: !!res?.following, isRequested: !!res?.requested }
+            : u
+        )
+      );
     } catch {
       setSuggestions((prev) =>
         prev.map((u) => (u._id === userId ? { ...u, isFollowing: false } : u))
@@ -84,8 +92,8 @@ export default function RightPanel() {
               </div>
             </Link>
             <div className="right-panel-person-actions">
-              {u.isFollowing ? (
-                <span className="post-time">Following</span>
+              {u.isFollowing || u.isRequested ? (
+                <span className="post-time">{u.isFollowing ? 'Following' : 'Requested'}</span>
               ) : (
                 <button className="add-friend-btn" onClick={() => handleFollow(u._id)}>
                   Add Friend

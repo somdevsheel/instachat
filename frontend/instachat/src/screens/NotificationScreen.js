@@ -32,6 +32,7 @@ import {
   markAllNotificationsAsRead,
   deleteNotification as deleteNotificationApi,
 } from '../api/Notification.api';
+import { getFollowRequests } from '../api/User.api';
 import { ROUTES } from '../navigation/routes.constants';
 import usePullToRefresh from '../hooks/usePullToRefresh';
 
@@ -43,6 +44,7 @@ const NotificationScreen = ({ navigation }) => {
 
   const { notifications = [], loading } = useSelector((state) => state.notifications);
   const [localLoading, setLocalLoading] = useState(false);
+  const [requestCount, setRequestCount] = useState(0); // private-account follow requests
 
   /* =========================
      FETCH NOTIFICATIONS
@@ -57,6 +59,10 @@ const NotificationScreen = ({ navigation }) => {
 
       dispatch(setNotifications(notifRes.data));
       dispatch(setUnreadCount(countRes.data.count));
+
+      getFollowRequests()
+        .then((res) => setRequestCount((res.data || []).length))
+        .catch(() => {});
     } catch (err) {
       console.error('Error fetching notifications:', err);
     } finally {
@@ -135,6 +141,10 @@ const handleNotificationPress = async (notification) => {
 
   // Navigate based on type
   switch (notification.type) {
+    case 'follow_request':
+      navigation.navigate(ROUTES.FOLLOW_REQUESTS);
+      break;
+
     case 'follow':
       console.log('➡️ Navigating to USER_PROFILE');
       navigation.navigate(ROUTES.USER_PROFILE, {
@@ -176,6 +186,7 @@ const handleNotificationPress = async (notification) => {
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'follow':
+      case 'follow_request':
         return '👤';
       case 'like':
         return '❤️';
@@ -296,6 +307,19 @@ const handleNotificationPress = async (notification) => {
         {!hasUnread && !localLoading && <View style={{ width: 80 }} />}
       </View>
 
+      {/* FOLLOW REQUESTS (private accounts) */}
+      {requestCount > 0 && (
+        <TouchableOpacity
+          style={styles.requestsRow}
+          onPress={() => navigation.navigate(ROUTES.FOLLOW_REQUESTS)}
+        >
+          <Ionicons name="person-add-outline" size={22} color="#fff" />
+          <Text style={styles.requestsText}>Follow requests</Text>
+          <Text style={styles.requestsCount}>{requestCount}</Text>
+          <Ionicons name="chevron-forward" size={18} color="#888" />
+        </TouchableOpacity>
+      )}
+
       {/* NOTIFICATIONS LIST */}
       {showLoader ? (
         <View style={styles.loader}>
@@ -342,6 +366,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#262626',
+  },
+  requestsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#262626',
+  },
+  requestsText: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  requestsCount: {
+    color: '#0095F6',
+    fontSize: 14,
+    fontWeight: '700',
   },
   headerTitle: {
     color: '#fff',

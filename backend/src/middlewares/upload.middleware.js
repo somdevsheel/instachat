@@ -1,6 +1,6 @@
+const crypto = require('crypto');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const path = require('path');
 
 // ✅ S3 client (default export)
 const s3Client = require('../config/aws');
@@ -8,6 +8,16 @@ const s3Client = require('../config/aws');
 if (!s3Client) {
   throw new Error('❌ S3 client not initialized');
 }
+
+const MIME_EXTENSIONS = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/x-matroska': '.mkv',
+};
 
 /* ======================================================
    FILE FILTER (STRICT + SAFE)
@@ -74,10 +84,10 @@ const upload = multer({
         ? 'videos'
         : 'images';
 
-      const ext = path.extname(file.originalname);
-      const filename = `${Date.now()}-${Math.round(
-        Math.random() * 1e9
-      )}${ext}`;
+      // Extension from the (allowlisted) MIME type, never from the
+      // client-supplied filename — that could be e.g. `.html`.
+      const ext = MIME_EXTENSIONS[file.mimetype] || '';
+      const filename = `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${ext}`;
 
       const key = `users/${userId}/posts/${baseFolder}/${filename}`;
 

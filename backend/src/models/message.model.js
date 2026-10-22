@@ -1,70 +1,3 @@
-// const mongoose = require('mongoose');
-
-// const messageSchema = new mongoose.Schema(
-//   {
-//     chat: {
-//       type: mongoose.Schema.Types.ObjectId,
-//       ref: 'Chat',
-//       required: true,
-//       index: true,
-//     },
-
-//     sender: {
-//       type: mongoose.Schema.Types.ObjectId,
-//       ref: 'User',
-//       required: true,
-//     },
-
-//     receiver: {
-//       type: mongoose.Schema.Types.ObjectId,
-//       ref: 'User',
-//       required: true,
-//     },
-
-//     text: {
-//       type: String,
-//       trim: true,
-//     },
-
-//     // ✅ STORY REPLY SUPPORT
-//     story: {
-//       type: mongoose.Schema.Types.ObjectId,
-//       ref: 'Story',
-//       default: null,
-//     },
-
-//     encryptionMode: {
-//       type: String,
-//       enum: ['plain', 'e2ee'],
-//       default: 'plain',
-//     },
-
-//     type: {
-//       type: String,
-//       enum: ['text', 'image', 'video'],
-//       default: 'text',
-//     },
-
-//     readBy: [
-//       {
-//         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-//         readAt: { type: Date, default: Date.now },
-//       },
-//     ],
-
-//     deletedForEveryone: { type: Boolean, default: false },
-//     deletedAt: Date,
-//     deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-//   },
-//   { timestamps: true }
-// );
-
-// module.exports = mongoose.model('Message', messageSchema);
-
-
-
-
-
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema(
@@ -90,6 +23,7 @@ const messageSchema = new mongoose.Schema(
 
     text: {
       type: String,
+      maxlength: [4000, 'Message cannot exceed 4000 characters'],
       trim: true,
     },
 
@@ -169,5 +103,10 @@ const messageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Chat history: filter by chat, sort by time.
+messageSchema.index({ chat: 1, createdAt: 1 });
+// Unread badge: messages addressed to me.
+messageSchema.index({ receiver: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Message', messageSchema);

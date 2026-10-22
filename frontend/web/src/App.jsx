@@ -30,6 +30,8 @@ const GroupsPage = lazy(() => import('./pages/GroupsPage.jsx'));
 const EventsPage = lazy(() => import('./pages/EventsPage.jsx'));
 const MarketplacePage = lazy(() => import('./pages/MarketplacePage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage.jsx'));
+const TermsPage = lazy(() => import('./pages/legal/TermsPage.jsx'));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useSelector((state) => state.auth);
@@ -53,6 +55,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          {/* Public: no login needed (linked from signup + app stores) */}
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route
             path="/"
             element={

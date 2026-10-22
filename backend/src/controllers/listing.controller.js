@@ -1,5 +1,8 @@
 const Listing = require('../models/Listing');
 const catchAsync = require('../utils/catchAsync');
+const getPagination = require('../utils/pagination');
+const { verifyUploadedMedia } = require('../utils/verifyUpload');
+const str = require('../utils/str');
 
 const CDN_BASE_URL =
   process.env.CDN_BASE_URL ||
@@ -12,19 +15,23 @@ exports.createListing = catchAsync(async (req, res) => {
   const { title, description, price, category, location, imageKey } = req.body;
   const userId = req.user.id;
 
-  if (!title || !title.trim()) {
+  if (typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ success: false, message: 'Title is required' });
   }
-  if (price === undefined || isNaN(price) || price < 0) {
+  if (price === undefined || price === null || isNaN(price) || price < 0 || price > 1e9) {
     return res.status(400).json({ success: false, message: 'A valid price is required' });
+  }
+
+  if (imageKey) {
+    await verifyUploadedMedia(imageKey, userId, 'image');
   }
 
   const listing = await Listing.create({
     title: title.trim(),
-    description: description?.trim() || '',
+    description: str(description) || '',
     price,
-    category: category?.trim() || 'Other',
-    location: location?.trim() || '',
+    category: str(category) || 'Other',
+    location: str(location) || '',
     image: imageKey ? `${CDN_BASE_URL}/${imageKey}` : null,
     seller: userId,
   });
@@ -38,9 +45,12 @@ exports.createListing = catchAsync(async (req, res) => {
  * GET /api/v1/marketplace
  */
 exports.getListings = catchAsync(async (req, res) => {
+  const { limit, skip } = getPagination(req.query);
   const listings = await Listing.find({ isSold: false })
     .populate('seller', 'username profilePicture')
     .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
     .lean();
 
   res.status(200).json({ success: true, data: listings });

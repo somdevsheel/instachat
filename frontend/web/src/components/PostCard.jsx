@@ -77,6 +77,11 @@ export default function PostCard({ post }) {
         <PostMenu post={post} />
       </div>
 
+      {post.repostUnavailable && (
+        <div className="centered-message">
+          This content isn't available. The account may be private or no longer exists.
+        </div>
+      )}
       {!original && post.caption && <div className="post-text-only">{post.caption}</div>}
       {!original && post.media && <PostMedia media={post.media} caption={post.caption} />}
 

@@ -21,4 +21,27 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Session revoked / expired / account banned: the server tags these with
+// code SESSION_INVALID. Apps register what to do (log out) via
+// onSessionInvalid — kept as a callback to avoid importing the store here.
+let sessionInvalidHandler = null;
+export const onSessionInvalid = (handler) => {
+  sessionInvalidHandler = handler;
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error?.config?.url || '';
+    if (
+      error?.response?.data?.code === 'SESSION_INVALID' &&
+      !url.endsWith('/auth/logout') &&
+      sessionInvalidHandler
+    ) {
+      sessionInvalidHandler(error.response.data.message);
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
