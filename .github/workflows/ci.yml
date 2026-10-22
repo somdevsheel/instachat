@@ -20,7 +20,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # Throwaway DB that only exists inside this job: no password
+          # needed (and none for secret scanners to flag).
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -49,7 +51,7 @@ jobs:
       - name: Test
         run: npm test
         env:
-          TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+          TEST_POSTGRES_URL: postgres://postgres@127.0.0.1:5432/postgres
           TEST_REDIS_URL: redis://127.0.0.1:6379/15
 
   web:
